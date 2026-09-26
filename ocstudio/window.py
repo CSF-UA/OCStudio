@@ -4,7 +4,7 @@ ephemeris, series and the shape of O-C on the right."""
 from pathlib import Path
 
 import numpy as np
-from apps.approximation.logic import brat_model, exponential_model, segment
+from apps.approximation.logic import evaluate, segment
 from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
@@ -30,6 +30,8 @@ SERIES = {
 }
 DOUBT_RIM = "#fab219"  # status "warning": doubtful cycle number
 SHAPES = {"": "none", "line": "line", "parabola": "parabola", "sine": "sine + line"}
+METHOD_NAMES = {"poly": "polynomial", "brat": "Brat+", "sym": "symmetric polynomial", "wsl": "wall-supported line",
+                "apar": "asymptotic parabola"}
 COLS = ["JD", "O−C, d", "σ, d", "min/max", "type", "N", "[N]", "correction", "sector", "method", "state"]
 
 
@@ -43,15 +45,6 @@ def box(layout, *items):
     for it in items:
         layout.addWidget(it) if isinstance(it, QWidget) else layout.addLayout(it)
     return layout
-
-
-def curve(f, x):
-    """The fitted extremum profile of an astrolab FitResult."""
-    if f.method == "brat":
-        return brat_model(x, *f.coefficients)
-    if f.method == "exp":
-        return exponential_model(x, *f.coefficients)
-    return np.polyval(f.coefficients, x - f.x_mean)
 
 
 class Plot(QWidget):
@@ -131,6 +124,7 @@ class Window(QMainWindow):
         self.setStyleSheet(STYLE)
         self.resize(1500, 920)
         self.folder, self.sectors, self.ext, self.overrides = None, [], [], {}
+        self.pick = {}  # {window key: method}: per series the method with the least O-C scatter (oc.best_methods)
         self.manual = None  # (T0, P, refined) typed or refined by the user; None: automatic
         self.auto = self.oc = self.sel = self.run = None
         self.error = ""  # why there is no O-C, shown over the plot
@@ -228,10 +222,10 @@ class Window(QMainWindow):
             grid.addWidget(name, r, 0)
             grid.addWidget(self.show_box[k], r, 1)
             grid.addWidget(self.fit_box[k], r, 2)
-        self.noisy_note = QLabel()
-        self.noisy_note.setWordWrap(True)
-        self.noisy_note.setStyleSheet(f"color: {COLORS['text_dim']}")
-        grid.addWidget(self.noisy_note, len(SERIES) + 1, 0, 1, 3)
+        self.series_note = QLabel()
+        self.series_note.setWordWrap(True)
+        self.series_note.setStyleSheet(f"color: {COLORS['text_dim']}")
+        grid.addWidget(self.series_note, len(SERIES) + 1, 0, 1, 3)
         self.x_cycles = QCheckBox("X axis: cycle number E")
         self.x_cycles.toggled.connect(lambda _: self.redraw(reset=True))
         grid.addWidget(self.x_cycles, len(SERIES) + 2, 0, 1, 3)
@@ -282,10 +276,10 @@ class Window(QMainWindow):
         if self.run:
             return self.status("Wait: the sectors are still being processed")
         self.folder = Path(path).resolve()
-        self.sectors, self.overrides, self.manual = X.find_sectors(self.folder), {}, None
+        self.sectors, self.overrides, self.manual, self.pick = X.find_sectors(self.folder), {}, None, {}
         self.ext, self.auto, self.oc, self.sel = [], None, None, None
         self.error = "" if self.sectors else "No .tess files in the folder"
-        self.noisy_note.setText("")
+        self.series_note.setText("")
         self.star.setText(f"<b>{self.folder.name}</b>: {len(self.sectors)} .tess files")
         self._fill_sectors()
         self.start()
@@ -307,7 +301,13 @@ class Window(QMainWindow):
     def _processed(self, sectors):
         self.sectors = sectors
         self._fill_sectors()
+        self.pick = {}
         self.recompute()
+        # every window was timed by several methods: per series, the one with the least O-C scatter
+        methods = O.best_methods(self.ext, self.auto) if self.auto else {}
+        self.pick = {e.key: methods[c][0] for e, c in zip(self.ext, self.auto.cls) if c in methods} if methods else {}
+        if self.pick:
+            self.recompute()
         # series far noisier than the minima (spot waves, wide humps) start hidden, so they do not bury the O-C
         noisy = O.noisy_series(self.ext, self.oc) if self.oc else {}
         for k, b in self.show_box.items():
@@ -315,7 +315,12 @@ class Window(QMainWindow):
             b.setChecked(k not in noisy)
             b.blockSignals(False)
         hidden = [f"{SERIES[k][0]} (O−C scatter {noisy[k]:.0f}× the minima's)" for k in SERIES if k in noisy]
-        self.noisy_note.setText(f"Hidden: {', '.join(hidden)}. Tick show to see them." if hidden else "")
+        minutes = lambda d: f"{d * 1440:.2g}" if d * 1440 < 10 else f"{d * 1440:.0f}"
+        better = [f"{SERIES[k][0]}: {METHOD_NAMES[methods[k][0]]} (O−C scatter {minutes(methods[k][1])} → "
+                  f"{minutes(methods[k][2])} min)" for k in SERIES if k in methods and k not in noisy]
+        self.series_note.setText("<br>".join(
+            ([f"Methods with less O−C scatter than Auto: {'; '.join(better)}."] if better else [])
+            + ([f"Hidden: {', '.join(hidden)}. Tick show to see them."] if hidden else [])))
         self.redraw(reset=True)
         ok = sum(not s.error for s in sectors)
         self.status(f"Sectors processed: {ok} of {len(sectors)}")
@@ -352,8 +357,9 @@ class Window(QMainWindow):
         self.auto = self.oc = None
         self.error = ""
         try:
-            self.auto = self.oc = O.compute(self.ext, [s.period for s in self.sectors if s.number in on],
-                                            self.overrides, self.fit_types())
+            self.ext, self.auto = O.compute_picked(self.ext, [s.period for s in self.sectors if s.number in on],
+                                                   self.pick, self.overrides, self.fit_types())
+            self.oc = self.auto
             if self.manual:
                 T0, P, refined = self.manual
                 self.oc = O.with_ephemeris(self.ext, self.auto, T0, P, self.overrides, self.fit_types())
@@ -502,8 +508,8 @@ class Window(QMainWindow):
         x, y = s.x[sl], -s.y[sl]
         self.lc_points.set_data(np.c_[x, y], size=4, face_color=COLORS["text_dim"], edge_color=None)
         seg = s.x[segment(s.x, e.fit.interval, e.fit.wings)]
-        xs = np.linspace(seg.min(), seg.max(), 300)
-        self.lc_fit.set_data(np.c_[xs, -curve(e.fit, xs)])
+        xs = np.linspace(*(e.fit.x_range or (seg.min(), seg.max())), 300)
+        self.lc_fit.set_data(np.c_[xs, -evaluate(e.fit, xs)])
         self.lc_t0.set_data(np.array([[e.jd, y.min()], [e.jd, y.max()]]))
         self.lc.show_range(x, y)
         flag = O.flags(oc, i)

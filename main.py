@@ -10,15 +10,19 @@ def batch(folder):
     import numpy as np
 
     from ocstudio.extrema import extrema_of, find_sectors, process_star
-    from ocstudio.oc import compute, control_line, rows, write_csv
+    from ocstudio.oc import best_methods, compute, compute_picked, control_line, rows, write_csv
 
     folder = Path(folder).resolve()
     sectors = process_star(find_sectors(folder), progress=lambda i, n: print(f"\r{i}/{n} sectors", end="", flush=True))
     print()
     for s in sectors:
         print(f"  sector {s.number}: " + (s.error or f"P {s.period:.6f} {s.type}, {len(s.extrema)}/{s.windows} fitted"))
-    ext = extrema_of(sectors)
-    oc = compute(ext, [s.period for s in sectors if not s.error])
+    ext, periods = extrema_of(sectors), [s.period for s in sectors if not s.error]
+    oc = compute(ext, periods)
+    methods = best_methods(ext, oc)  # per series the method with the least O-C scatter, as in the window
+    ext, oc = compute_picked(ext, periods, {e.key: methods[c][0] for e, c in zip(ext, oc.cls) if c in methods})
+    for k, (m, a, b) in methods.items():
+        print(f"  {k}: {m}, O-C scatter {a * 1440:.2g} -> {b * 1440:.2g} min")
     jd = np.array([e.jd for e in ext])
     k, b = control_line(jd - oc.T0, oc.values(jd), oc.used)
     eph = {"T0": oc.T0, "P": oc.P, "k": k, "b": b, "fit": "primary_min"}

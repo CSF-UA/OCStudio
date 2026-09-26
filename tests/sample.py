@@ -31,6 +31,8 @@ def main(root):
         name = f"{star.parent.name}_{star.name}"
         try:
             oc = compute(ext, periods)
+            methods = O.best_methods(ext, oc)  # as the window and --batch do
+            ext, oc = O.compute_picked(ext, periods, {e.key: methods[c][0] for e, c in zip(ext, oc.cls) if c in methods})
         except ValueError as e:
             print(f"{name:22s} {e}")
             continue
@@ -57,7 +59,8 @@ def main(root):
         print(f"{name:22s} sectors {len(sectors) - bad}/{len(sectors)} extrema {len(ext):5d} "
               f"P {oc.P:.7f} (sectors {np.median(periods):.6f}) doubt {oc.doubt.sum():4d} "
               f"clipped {oc.clipped.sum():3d} imprecise {oc.imprecise.sum():3d} fit {oc.used.sum():4d} MAD {mad:.0f} s"
-              f"{' hidden ' + ' '.join(O.noisy_series(ext, oc)) if O.noisy_series(ext, oc) else ''}")
+              f"{' hidden ' + ' '.join(O.noisy_series(ext, oc)) if O.noisy_series(ext, oc) else ''}"
+              f"{' methods ' + ' '.join(f'{k}:{m[0]}' for k, m in methods.items()) if methods else ''}")
 
 
 if __name__ == "__main__":

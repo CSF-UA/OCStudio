@@ -15,9 +15,12 @@ from ocstudio.oc import Extremum
 
 SECTOR = re.compile(r"[-_][sS](\d{1,4})[-_]")
 WINGS = 0.5  # of the window on each side, for the eclipse profile of astrolab Auto
-# refit methods of the point view: astrolab order choice and wings
+# methods of astrolab: its choice and wings. sym, wsl, apar: near-extremum functions of MAVKA
 METHODS = {"auto": ({"method": "auto"}, WINGS), "brat": ({"method": "brat", "params": None, "slope": True,
-                                                          "dip": True}, WINGS), "poly": ("auto", 0.0)}
+                                                          "dip": True}, WINGS), "poly": ("auto", 0.0),
+           "sym": ("sym", 0.0), "wsl": ("wsl", 0.0), "apar": ("apar", 0.0)}
+# every window is timed by these too; per series the method with the least O-C scatter is kept (oc.best_methods)
+ALTERNATIVES = {"min": ("poly", "sym", "wsl"), "max": ("sym", "apar")}
 
 
 @dataclass
@@ -64,8 +67,15 @@ def process_sector(s):
         with np.errstate(all="ignore"):  # overflows of rejected trial profiles
             fits = approximate_all(s.x, s.y, [Interval(a, b, k) for a, b, k in zip(start, end, kind)],
                                    METHODS["auto"][0], WINGS)
-        s.extrema = [Extremum(f.t0, f.kind, abs(f.y_at_t0 - base), s.number, f.interval.start, f.interval.end,
-                              f.method, f, f.sigma_t0) for f in fits]
+            s.extrema = [Extremum(f.t0, f.kind, abs(f.y_at_t0 - base), s.number, f.interval.start, f.interval.end,
+                                  f.method, f, f.sigma_t0) for f in fits]
+            for e in s.extrema:
+                for m in ALTERNATIVES[e.kind]:
+                    try:
+                        e.alts[m] = refit(s, e, m)
+                    except Exception:  # the method fails on this window (or finds the other kind): no alternative
+                        continue
+                    e.alts[m].depth = e.depth  # a method moves the time, not the depths that sort out the types
     except Exception as e:  # a broken sector must not stop the star
         s.error = str(e) or type(e).__name__
     return s

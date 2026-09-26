@@ -2,6 +2,7 @@
 
 import csv
 import sys
+from dataclasses import replace
 import tempfile
 import traceback
 from pathlib import Path
@@ -10,8 +11,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ocstudio.oc import (C, Extremum, Override, compute, control_line, noisy_series, refit, rows,  # noqa: E402
-                         shape, with_ephemeris, write_csv)
+from ocstudio.oc import (C, Extremum, Override, best_methods, compute, compute_picked, control_line,  # noqa: E402
+                         noisy_series, refit, rows, shape, with_ephemeris, write_csv)
 
 T0, P = 1325.3, 2.5
 YEARS = (1, 2, 3, 27, 28, 61, 62)  # TESS sectors: 2 and 3 years apart
@@ -181,6 +182,28 @@ def test_noisy_series_hidden():
     oc = compute(ext, [P])
     assert oc.doubt[np.char.startswith(cls.astype(str), "max")].mean() > 0.3
     assert set(noisy_series(ext, oc)) == {"max_I", "max_II"}, noisy_series(ext, oc)
+
+
+def test_best_method_per_series():
+    ph = {"primary_min": 0.0, "max_I": 0.25, "secondary_min": 0.5, "max_II": 0.75}
+    ext, cls, n = star(phase=ph)
+    rng = np.random.default_rng(5)
+    for e, c, k in zip(ext, cls, n):
+        true = T0 + P * (k + ph[c])
+        if c.startswith("max"):  # flat maxima: Auto lands on either end of the plateau, a symmetric fit on the centre
+            e.alts["sym"] = replace(e, method="sym", alts={})
+            e.jd += 0.04 * P * rng.choice([-1, 1])
+        else:  # a method a little better than Auto on the minima: within the noise of the scatter, not taken
+            e.alts["wsl"] = replace(e, jd=true + 0.95 * (e.jd - true), method="wsl", alts={})
+    oc = compute(ext, [P])
+    methods = best_methods(ext, oc)
+    assert set(methods) == {"max_I", "max_II"} and {m[0] for m in methods.values()} == {"sym"}, methods
+    assert all(after < 0.2 * before for _, before, after in methods.values()), methods
+    pick = {e.key: methods[c][0] for e, c in zip(ext, oc.cls) if c in methods}
+    ext2, oc2 = compute_picked(ext, [P], pick)
+    assert (oc2.cls == oc.cls).all() and abs(oc2.P - P) < 1e-6 and not oc2.doubt.any()
+    assert all((ext2[i] is ext[i].alts.get("sym")) == c.startswith("max") for i, c in enumerate(cls))
+    assert noisy_series(ext, oc) and not noisy_series(ext2, oc2)  # the maxima are timings again
 
 
 def test_table_follows_the_guide():

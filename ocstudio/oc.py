@@ -6,7 +6,7 @@ a growing time base, so year-long gaps between sectors do not lose count. No fil
 """
 
 import csv
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from statistics import median_high
 
 import numpy as np
@@ -16,6 +16,7 @@ C = {"primary_min": 0.0, "max_I": 0.25, "secondary_min": 0.5, "max_II": 0.75}
 DOUBT = 0.1  # cycles off the expected phase of the type: the cycle number may be wrong
 IMPRECISE = 5.0  # timing error over this many times the median of its type: left out like a doubtful point
 NOISY = 5.0  # O-C scatter of a type over this many times that of the minima (and over 1% of P): hidden
+BETTER = 0.9  # another method replaces the automatic fit of a type when it cuts the O-C scatter by 10 %+
 MIN_TYPES = ("primary_min", "secondary_min")
 
 
@@ -30,6 +31,7 @@ class Extremum:
     method: str = ""
     fit: object = None  # astrolab FitResult, drawn in the point view
     sigma: float = float("nan")  # 1-sigma error of jd from the fit, days
+    alts: dict = field(default_factory=dict, repr=False)  # the same window timed by other methods: method -> Extremum
 
     @property
     def key(self):
@@ -279,6 +281,47 @@ def refit(ext, oc, overrides=None, fit_types=("primary_min",)):
     return new
 
 
+def _scatter(v):
+    """Interquartile range / 1.349 (the std of a normal distribution): wide when the points jump between two
+    phases, not moved by a few stray points."""
+    return float(np.subtract(*np.percentile(v, [75, 25]))) / 1.349
+
+
+def best_methods(ext, oc):
+    """Per type, the fitting method whose O-C scatter is the least, among the alternative timings every
+    extremum carries (e.alts; a point without the method keeps its own), if BETTER than the automatic fit
+    (the scatter of a sample is noisy). The cycle numbers and the ephemeris stay those of oc.
+    Returns {type: (method, scatter before, scatter after)} for the types that change."""
+    jd = np.array([e.jd for e in ext])
+    v = oc.values(jd)
+    out = {}
+    for k in C:
+        m = np.flatnonzero(oc.cls == k)
+        if m.size < 5:
+            continue
+        now = _scatter(v[m])
+        best = ("", BETTER * now)
+        for meth in sorted({a for i in m for a in ext[i].alts}):
+            alt = v[m] + np.array([ext[i].alts[meth].jd - jd[i] if meth in ext[i].alts else 0.0 for i in m])
+            if _scatter(alt) < best[1]:
+                best = (meth, _scatter(alt))
+        if best[0]:
+            out[k] = (best[0], now, best[1])
+    return out
+
+
+def compute_picked(ext, periods, pick, overrides=None, fit_types=("primary_min",)):
+    """compute() on the automatic timings, then the timings of the methods picked per window ({key: method}):
+    a method moves the times, not the types or the cycle count across gaps, so the cycle numbers are read
+    against the automatic ephemeris and the ephemeris is refitted. Returns (the extrema, in the order of ext;
+    OC)."""
+    oc = compute(ext, periods, overrides, fit_types)
+    if not pick:
+        return ext, oc
+    ext = [e.alts.get(pick.get(e.key), e) for e in ext]
+    return ext, refit(ext, with_ephemeris(ext, oc, oc.T0, oc.P, overrides, fit_types), overrides, fit_types)
+
+
 def noisy_series(ext, oc):
     """Types whose O-C scatter is over NOISY times that of the more precise minima and over 1% of P: spot
     waves or flat maxima rather than timings, hidden by default. Primary minima are never noisy.
@@ -286,8 +329,7 @@ def noisy_series(ext, oc):
     distribution), so a type whose points jump between two phases (the two ends of a flat maximum, one
     of them doubtful and excluded) is wide, while a few stray points are not. {type: scatter / minima's}"""
     v = oc.values(np.array([e.jd for e in ext]))
-    iqr = {k: float(np.subtract(*np.percentile(v[oc.cls == k], [75, 25]))) / 1.349
-           for k in C if (oc.cls == k).sum() >= 5}
+    iqr = {k: _scatter(v[oc.cls == k]) for k in C if (oc.cls == k).sum() >= 5}
     ref = min((iqr[k] for k in MIN_TYPES if k in iqr), default=None)
     if ref is None:
         return {}
