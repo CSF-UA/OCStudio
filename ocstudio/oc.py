@@ -280,19 +280,18 @@ def refit(ext, oc, overrides=None, fit_types=("primary_min",)):
 
 
 def noisy_series(ext, oc):
-    """Types whose O-C scatter (MAD of the points not excluded) is over NOISY times that of the more precise
-    minima and over 1% of P: spot waves or wide humps rather than timings, hidden by default. Primary
-    minima are never noisy. Returns {type: scatter / the minima's}."""
+    """Types whose O-C scatter is over NOISY times that of the more precise minima and over 1% of P: spot
+    waves or flat maxima rather than timings, hidden by default. Primary minima are never noisy.
+    The scatter is the interquartile range of all points of the type (/1.349: the std of a normal
+    distribution), so a type whose points jump between two phases (the two ends of a flat maximum, one
+    of them doubtful and excluded) is wide, while a few stray points are not. {type: scatter / minima's}"""
     v = oc.values(np.array([e.jd for e in ext]))
-    mad = {}
-    for k in C:
-        m = (oc.cls == k) & ~oc.excluded
-        if m.sum() >= 5:
-            mad[k] = 1.4826 * float(np.median(np.abs(v[m] - np.median(v[m]))))
-    ref = min((mad[k] for k in MIN_TYPES if k in mad), default=None)
+    iqr = {k: float(np.subtract(*np.percentile(v[oc.cls == k], [75, 25]))) / 1.349
+           for k in C if (oc.cls == k).sum() >= 5}
+    ref = min((iqr[k] for k in MIN_TYPES if k in iqr), default=None)
     if ref is None:
         return {}
-    return {k: s / max(ref, 1e-12) for k, s in mad.items()
+    return {k: s / max(ref, 1e-12) for k, s in iqr.items()
             if k != "primary_min" and s > NOISY * ref and s > 0.01 * oc.P}
 
 

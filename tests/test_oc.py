@@ -173,6 +173,14 @@ def test_noisy_series_hidden():
     noisy = noisy_series(ext, oc)
     assert set(noisy) == {"max_I", "max_II"} and min(noisy.values()) > 20, noisy
     assert abs(oc.P - P) < 1e-6
+    # flat maxima: the fit lands on either end of the plateau, the minority end is doubtful and excluded
+    ext, cls, n = star(phase=ph)
+    for e, c in zip(ext, cls):
+        if c.startswith("max") and rng.random() < 0.4:
+            e.jd -= 0.12 * P
+    oc = compute(ext, [P])
+    assert oc.doubt[np.char.startswith(cls.astype(str), "max")].mean() > 0.3
+    assert set(noisy_series(ext, oc)) == {"max_I", "max_II"}, noisy_series(ext, oc)
 
 
 def test_table_follows_the_guide():
