@@ -8,6 +8,14 @@ O−C diagram of a star from its TESS sectors in one window, by the CSF AstroLab
 2. Every sector runs on all cores: Splitter Auto cuts it into single-extremum windows,
    astrolab approximation Auto times the extremum in each window. Processing starts by itself when
    the folder is opened (**Run** runs it again).
+   Every window is also timed by other methods of astrolab: minima by a polynomial, a symmetric polynomial
+   and a wall-supported line, maxima by a symmetric polynomial and an asymptotic parabola (the near-extremum
+   functions of MAVKA, Andrych & Andronov 2019). For each series the method whose O−C scatter is the least
+   replaces Auto if it cuts the scatter by 10 % or more (e.g. flat maxima between eclipses: the symmetric
+   polynomial times the centre of the plateau instead of its higher end). The types and the cycle count
+   come from the Auto timings; the note under **Series** names the methods taken, the table the method
+   of every point, and **Refit** times a point by any method. Unlike astrolab Auto, which sees one light
+   curve, the choice depends on the O−C of the whole star.
 3. The O−C appears: types of extrema (primary/secondary minimum, maximum I/II), the guide's corrections
    (0, 0.5, 0.25, 0.75 plus whole cycles), cycle numbers counted across multi-year gaps, the ephemeris
    by least squares over the series ticked **in fit** (primary minima by default).
