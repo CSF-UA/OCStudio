@@ -12,7 +12,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ocstudio.oc import (C, Extremum, Override, best_methods, compute, compute_picked, control_line,  # noqa: E402
-                         noisy_series, refit, rows, shape, with_ephemeris, write_csv)
+                         noisy_series, pick_methods, refit, rows, shape, with_ephemeris, write_csv)
 
 T0, P = 1325.3, 2.5
 YEARS = (1, 2, 3, 27, 28, 61, 62)  # TESS sectors: 2 and 3 years apart
@@ -204,6 +204,40 @@ def test_best_method_per_series():
     assert (oc2.cls == oc.cls).all() and abs(oc2.P - P) < 1e-6 and not oc2.doubt.any()
     assert all((ext2[i] is ext[i].alts.get("sym")) == c.startswith("max") for i, c in enumerate(cls))
     assert noisy_series(ext, oc) and not noisy_series(ext2, oc2)  # the maxima are timings again
+
+
+def test_best_method_sees_through_real_oc_changes():
+    """A third body moves every extremum by 0.01 d: the scatter that picks the method is that around the
+    minima, so a precise method for the maxima is still found; one that adds its own slow drift is not."""
+    ph = {"primary_min": 0.0, "max_I": 0.25, "secondary_min": 0.5, "max_II": 0.75}
+    ltte = lambda t: 0.01 * np.sin(2 * np.pi * t / 700)
+    ext, cls, n = star(phase=ph, oc=ltte)
+    rng = np.random.default_rng(7)
+    for e, c in zip(ext, cls):
+        if c.startswith("max"):
+            e.alts["sym"] = replace(e, jd=e.jd + rng.normal(0, 1e-4), method="sym", alts={})
+            e.alts["apar"] = replace(e, jd=e.jd + 0.004 * np.sin(2 * np.pi * e.jd / 300), method="apar", alts={})
+            e.jd += rng.normal(0, 0.002)  # Auto: a noisy maximum
+    oc = compute(ext, [P])
+    methods = best_methods(ext, oc)
+    assert {k: m[0] for k, m in methods.items()} == {"max_I": "sym", "max_II": "sym"}, methods
+
+
+def test_fitted_series_keeps_auto_if_the_ephemeris_gets_worse():
+    """A method with less jitter inside a sector but an offset from sector to sector would make the
+    ephemeris worse: the primary minima keep Auto, the other series may still change."""
+    ext, cls, n = star()
+    offset = {s: 0.003 * (-1) ** i for i, s in enumerate(YEARS)}
+    rng = np.random.default_rng(9)
+    for e, c, k in zip(ext, cls, n):
+        true = T0 + P * (k + {"primary_min": 0.0, "secondary_min": 0.5}[c])
+        e.alts["sym"] = replace(e, jd=true + offset[e.sector] + rng.normal(0, 1e-5), method="sym", alts={})
+    oc = compute(ext, [P])
+    assert best_methods(ext, oc)["primary_min"][0] == "sym"  # less jitter inside the sectors
+    methods, pick = pick_methods(ext, oc, [P])
+    assert "primary_min" not in methods and all(ext[i].key not in pick for i in np.flatnonzero(cls == "primary_min"))
+    ext2, oc2 = compute_picked(ext, [P], pick)
+    assert abs(oc2.P - P) < 1e-6
 
 
 def test_table_follows_the_guide():

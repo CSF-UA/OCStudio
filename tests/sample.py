@@ -31,8 +31,8 @@ def main(root):
         name = f"{star.parent.name}_{star.name}"
         try:
             oc = compute(ext, periods)
-            methods = O.best_methods(ext, oc)  # as the window and --batch do
-            ext, oc = O.compute_picked(ext, periods, {e.key: methods[c][0] for e, c in zip(ext, oc.cls) if c in methods})
+            methods, pick = O.pick_methods(ext, oc, periods)  # as the window and --batch do
+            ext, oc = O.compute_picked(ext, periods, pick)
         except ValueError as e:
             print(f"{name:22s} {e}")
             continue

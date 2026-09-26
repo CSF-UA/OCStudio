@@ -287,27 +287,74 @@ def _scatter(v):
     return float(np.subtract(*np.percentile(v, [75, 25]))) / 1.349
 
 
+def _trend(tr, vr, t, half, loo=False):
+    """Median of the reference values vr (times tr, sorted) within half of each time t; loo: t is tr itself
+    and each point is left out of its own median. NaN where fewer than 2 points."""
+    lo, hi = np.searchsorted(tr, t - half), np.searchsorted(tr, t + half, side="right")
+    out = np.full(t.size, np.nan)
+    for i, (a, b) in enumerate(zip(lo, hi)):
+        w = np.delete(vr[a:b], i - a) if loo else vr[a:b]
+        if w.size >= 2:
+            out[i] = np.median(w)
+    return out
+
+
 def best_methods(ext, oc):
-    """Per type, the fitting method whose O-C scatter is the least, among the alternative timings every
+    """Per type, the fitting method with the least timing scatter, among the alternative timings every
     extremum carries (e.alts; a point without the method keeps its own), if BETTER than the automatic fit
-    (the scatter of a sample is noisy). The cycle numbers and the ephemeris stay those of oc.
+    (the scatter of a sample is noisy). Real O-C changes (a third body, period changes) move every extremum
+    alike and are taken out: the scatter is that around the local median of the automatic primary minima,
+    or for the primary minima around the local median of their own neighbours, within max(5 d, 3 P).
+    The cycle numbers and the ephemeris stay those of oc (automatic timings, sorted by time).
     Returns {type: (method, scatter before, scatter after)} for the types that change."""
     jd = np.array([e.jd for e in ext])
     v = oc.values(jd)
+    half = max(5.0, 3 * oc.P)
+    ref = np.flatnonzero((oc.cls == "primary_min") & ~oc.doubt)
+    ref = ref[np.argsort(jd[ref], kind="stable")]
     out = {}
     for k in C:
         m = np.flatnonzero(oc.cls == k)
+        m = m[np.argsort(jd[m], kind="stable")]
         if m.size < 5:
             continue
-        now = _scatter(v[m])
+        other = None if k == "primary_min" else _trend(jd[ref], v[ref], jd[m], half)
+
+        def scatter(vals):
+            r = vals - (_trend(jd[m], vals, jd[m], half, loo=True) if other is None else other)
+            r = r[np.isfinite(r)]
+            return _scatter(r) if r.size >= 5 else float("nan")
+
+        now = scatter(v[m])
+        if not np.isfinite(now):
+            continue
         best = ("", BETTER * now)
         for meth in sorted({a for i in m for a in ext[i].alts}):
-            alt = v[m] + np.array([ext[i].alts[meth].jd - jd[i] if meth in ext[i].alts else 0.0 for i in m])
-            if _scatter(alt) < best[1]:
-                best = (meth, _scatter(alt))
+            s = scatter(v[m] + np.array([ext[i].alts[meth].jd - jd[i] if meth in ext[i].alts else 0.0 for i in m]))
+            if s < best[1]:
+                best = (meth, s)
         if best[0]:
             out[k] = (best[0], now, best[1])
     return out
+
+
+def _fit_scatter(ext, oc):
+    """Robust scatter of the O-C of the points in the ephemeris fit."""
+    u = oc.values(np.array([e.jd for e in ext]))[oc.used]
+    return 1.4826 * float(np.median(np.abs(u - np.median(u)))) if u.size else float("inf")
+
+
+def pick_methods(ext, oc, periods, overrides=None, fit_types=("primary_min",)):
+    """best_methods and the pick {window key: method} for compute_picked. The series in the fit keep Auto if
+    their method makes the scatter of the ephemeris fit larger (a star whose types or cycles are in doubt):
+    the ephemeris must not get worse. Returns (methods, pick)."""
+    methods = best_methods(ext, oc)
+    pick = lambda ms: {e.key: ms[c][0] for e, c in zip(ext, oc.cls) if c in ms}
+    if any(k in methods for k in fit_types):
+        e2, o2 = compute_picked(ext, periods, pick(methods), overrides, fit_types)
+        if _fit_scatter(e2, o2) > _fit_scatter(ext, oc):
+            methods = {k: m for k, m in methods.items() if k not in fit_types}
+    return methods, pick(methods)
 
 
 def compute_picked(ext, periods, pick, overrides=None, fit_types=("primary_min",)):

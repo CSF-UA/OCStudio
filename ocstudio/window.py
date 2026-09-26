@@ -304,8 +304,9 @@ class Window(QMainWindow):
         self.pick = {}
         self.recompute()
         # every window was timed by several methods: per series, the one with the least O-C scatter
-        methods = O.best_methods(self.ext, self.auto) if self.auto else {}
-        self.pick = {e.key: methods[c][0] for e, c in zip(self.ext, self.auto.cls) if c in methods} if methods else {}
+        methods, self.pick = ({}, {}) if self.auto is None else O.pick_methods(
+            self.ext, self.auto, [s.period for s in self.sectors if s.number in self.enabled()], self.overrides,
+            self.fit_types())
         if self.pick:
             self.recompute()
         # series far noisier than the minima (spot waves, wide humps) start hidden, so they do not bury the O-C
@@ -316,10 +317,10 @@ class Window(QMainWindow):
             b.blockSignals(False)
         hidden = [f"{SERIES[k][0]} (O−C scatter {noisy[k]:.0f}× the minima's)" for k in SERIES if k in noisy]
         minutes = lambda d: f"{d * 1440:.2g}" if d * 1440 < 10 else f"{d * 1440:.0f}"
-        better = [f"{SERIES[k][0]}: {METHOD_NAMES[methods[k][0]]} (O−C scatter {minutes(methods[k][1])} → "
+        better = [f"{SERIES[k][0]}: {METHOD_NAMES[methods[k][0]]} (scatter {minutes(methods[k][1])} → "
                   f"{minutes(methods[k][2])} min)" for k in SERIES if k in methods and k not in noisy]
         self.series_note.setText("<br>".join(
-            ([f"Methods with less O−C scatter than Auto: {'; '.join(better)}."] if better else [])
+            ([f"Methods timing more precisely than Auto: {'; '.join(better)}."] if better else [])
             + ([f"Hidden: {', '.join(hidden)}. Tick show to see them."] if hidden else [])))
         self.redraw(reset=True)
         ok = sum(not s.error for s in sectors)

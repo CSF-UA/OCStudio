@@ -10,12 +10,15 @@ O−C diagram of a star from its TESS sectors in one window, by the CSF AstroLab
    the folder is opened (**Run** runs it again).
    Every window is also timed by other methods of astrolab: minima by a polynomial, a symmetric polynomial
    and a wall-supported line, maxima by a symmetric polynomial and an asymptotic parabola (the near-extremum
-   functions of MAVKA, Andrych & Andronov 2019). For each series the method whose O−C scatter is the least
-   replaces Auto if it cuts the scatter by 10 % or more (e.g. flat maxima between eclipses: the symmetric
-   polynomial times the centre of the plateau instead of its higher end). The types and the cycle count
-   come from the Auto timings; the note under **Series** names the methods taken, the table the method
-   of every point, and **Refit** times a point by any method. Unlike astrolab Auto, which sees one light
-   curve, the choice depends on the O−C of the whole star.
+   functions of MAVKA, Andrych & Andronov 2019). For each series the most precise method replaces Auto if it
+   cuts the timing scatter by 10 % or more (e.g. flat maxima between eclipses: the symmetric polynomial
+   times the centre of the plateau instead of its higher end). The timing scatter is taken around the
+   local median of the primary minima (their own neighbours, for the primary minima), so real O−C changes
+   that move every extremum alike (a third body, a period change) do not hide the difference between
+   methods. The series in the fit (primary minima) change method only if the ephemeris fit does not get
+   worse. The types and the cycle count come from the Auto timings; the note under **Series** names the
+   methods taken, the table the method of every point, and **Refit** times a point by any method. Unlike
+   astrolab Auto, which sees one light curve, the choice depends on the O−C of the whole star.
 3. The O−C appears: types of extrema (primary/secondary minimum, maximum I/II), the guide's corrections
    (0, 0.5, 0.25, 0.75 plus whole cycles), cycle numbers counted across multi-year gaps, the ephemeris
    by least squares over the series ticked **in fit** (primary minima by default).
