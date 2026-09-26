@@ -52,6 +52,10 @@ def main():
     noisy = O.noisy_series(w.ext, w.oc)
     assert all(w.show_box[k].isChecked() == (k not in noisy) for k in w.show_box)
     assert ("Hidden" in w.noisy_note.text()) == bool(noisy) and w.bars.visible
+    w.bars_box.setChecked(False)
+    assert not w.bars.visible and w.points.visible
+    w.bars_box.setChecked(True)
+    assert w.bars.visible
     w.resize(w.width() + 400, w.height() + 100)  # e.g. maximised after loading: the axis labels must follow
     for _ in range(10):
         app.processEvents()

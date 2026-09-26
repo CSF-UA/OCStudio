@@ -235,6 +235,10 @@ class Window(QMainWindow):
         self.x_cycles = QCheckBox("X axis: cycle number E")
         self.x_cycles.toggled.connect(lambda _: self.redraw(reset=True))
         grid.addWidget(self.x_cycles, len(SERIES) + 2, 0, 1, 3)
+        self.bars_box = QCheckBox("Error bars ±σ (timing error of the fit)")
+        self.bars_box.setChecked(True)
+        self.bars_box.toggled.connect(lambda _: self.redraw())
+        grid.addWidget(self.bars_box, len(SERIES) + 3, 0, 1, 3)
         form = QGroupBox("O−C shape")
         lay = QVBoxLayout(form)
         self.shape_group = QButtonGroup(self)
@@ -392,7 +396,7 @@ class Window(QMainWindow):
                                  edge_width=np.where(oc.doubt, 2.5, 1.0)[m],
                                  symbol=np.array([SERIES[k][2] for k in oc.cls])[m])
         sig = np.array([e.sigma for e in self.ext])
-        b = m & np.isfinite(sig)
+        b = m & np.isfinite(sig) & self.bars_box.isChecked()
         self.bars.visible = bool(b.any())
         if b.any():
             color[:, 3] = 0.6

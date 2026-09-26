@@ -15,8 +15,8 @@ O−C diagram of a star from its TESS sectors in one window, by the CSF AstroLab
    shifts its cycle, the type and the fitting method can be changed; ←/→ go to the neighbour.
    Hollow markers: points left out automatically (outliers, doubtful cycle, imprecise timing) or by you;
    series without **in fit** are drawn filled but are not fitted either. A yellow rim marks a doubtful cycle
-   number. The bars are ±σ, the timing error of each fit; a point whose σ is over 5× the median of its
-   series (or infinite: the extremum at the edge of its window) is imprecise.
+   number. The bars are ±σ, the timing error of each fit (**Error bars** turns them off); a point whose σ
+   is over 5× the median of its series (or infinite: the extremum at the edge of its window) is imprecise.
    A series whose O−C scatter is over 5× that of the minima and over 1% of P (spot waves, wide humps
    rather than eclipse timings) starts hidden, with a note under **Series**; tick **show** to see it.
 5. T0 and P can be typed. **Refine** refits T0 and P and stays on — later changes are refitted too —
