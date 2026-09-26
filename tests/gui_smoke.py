@@ -49,6 +49,13 @@ def main():
     wait(app, w)
     assert w.oc is not None and len(w.ext) > 10, w.statusBar().currentMessage()
     n = len(w.ext)
+    w.resize(w.width() + 400, w.height() + 100)  # e.g. maximised after loading: the axis labels must follow
+    for _ in range(10):
+        app.processEvents()
+    for plot in (w.plot, w.lc):
+        for ax, k in ((plot.xaxis, 0), (plot.yaxis, 1)):
+            shown = ax.node_transform(plot.view.scene).map(ax._axis_ends())[:, k]
+            assert np.allclose(ax.axis.domain, shown), (ax.axis.domain, shown)
 
     i = int(np.flatnonzero(w.shown)[3])
     px, py = w.plot.to_screen(np.array([[w.x[i], w.v[i]]]))[0]

@@ -79,8 +79,11 @@ class Plot(QWidget):
         grid.add_widget(self.xaxis, row=2, col=1)
         grid.add_widget(row=3, col=1).height_max = 16  # room for the axis label
         grid.add_widget(row=1, col=2).width_max = 24  # and for the last tick label
-        self.xaxis.link_view(self.view)
-        self.yaxis.link_view(self.view)
+        for a in (self.xaxis, self.yaxis):
+            a.link_view(self.view)
+        # VisPy relabels an axis only when the camera moves, not when the layout resizes or moves the axis
+        # (a maximised window kept the old labels over the stretched axis): relabel before every draw
+        self.canvas.events.draw.connect(lambda e: [a._view_changed() for a in (self.xaxis, self.yaxis)], position="first")
         self._press = None
         self.canvas.events.mouse_press.connect(lambda e: setattr(self, "_press", e.pos))
         self.canvas.events.mouse_release.connect(self._release)
