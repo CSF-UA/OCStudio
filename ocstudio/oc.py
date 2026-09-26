@@ -185,10 +185,10 @@ def _finish(ext, T0, P, phase, cls0, cls, E, doubt, overrides, fit_types, refit)
     clipped = np.zeros(len(ext), bool)
     if refit:
         if use.sum() < 3:
-            raise ValueError("Менше 3 екстремумів для ефемериди")
+            raise ValueError("Fewer than 3 extrema for the ephemeris")
         x = E + corrections(cls)
         if np.ptp(x[use]) == 0:
-            raise ValueError("Усі точки підгонки в одному циклі: перевірте T0 і P")
+            raise ValueError("All fitted points fall in one cycle: check T0 and P")
         keep_in = np.array([u is False for u in user])
         T0, P, clipped = fit_ephemeris(jd, x, use, keep_in=keep_in)
     excluded = np.array([(d or k) if u is None else bool(u) for d, k, u in zip(doubt, clipped, user)], bool)
@@ -202,7 +202,7 @@ def _numbered(ext, T0, P, phase, cls0, overrides):
                     for e, c in zip(ext, cls0)], object)
     u = (jd - T0) / P - np.array([phase[k] for k in cls])
     if not np.all(np.abs(u) < 1e9):
-        raise ValueError("T0 чи P хибні: номери циклів завеликі")
+        raise ValueError("T0 or P is off: the cycle numbers are too large")
     E = np.round(u).astype(int)
     doubt = np.abs(u - E) > DOUBT
     E += np.array([overrides[e.key].shift if e.key in overrides else 0 for e in ext], int)
@@ -213,10 +213,10 @@ def compute(ext, periods, overrides=None, fit_types=("primary_min",)):
     """Everything from the extrema (sorted by jd) and the periods of the sectors."""
     overrides = overrides or {}
     if sum(e.kind == "min" for e in ext) < 3:
-        raise ValueError("Менше 3 мінімумів: O−C не побудувати")
+        raise ValueError("Fewer than 3 minima: no O−C")
     good = [p for p in periods if p is not None and np.isfinite(p) and p > 0]
     if not good:
-        raise ValueError("Немає періоду в жодному секторі")
+        raise ValueError("No sector has a period")
     jd = np.array([e.jd for e in ext])
     arr = lambda f: np.array([getattr(e, f) for e in ext])
     # the larger of two middle periods: a 2x period is repaired from the minima, a half one not always
@@ -236,16 +236,16 @@ def with_ephemeris(ext, oc, T0, P, overrides=None, fit_types=("primary_min",)):
     try:
         T0, P = float(T0), float(P)
     except (TypeError, ValueError):
-        raise ValueError("T0 і P мають бути числами") from None
+        raise ValueError("T0 and P must be numbers") from None
     if not (np.isfinite(T0) and np.isfinite(P) and P > 0):
-        raise ValueError("T0 і P мають бути скінченними, P > 0")
+        raise ValueError("T0 and P must be finite, P > 0")
     overrides = overrides or {}
     cls, E, doubt = _numbered(ext, T0, P, oc.phase, oc.cls0, overrides)
     return _finish(ext, T0, P, oc.phase, oc.cls0, cls, E, doubt, overrides, fit_types, refit=False)
 
 
 def refit(ext, oc, overrides=None, fit_types=("primary_min",)):
-    """'Уточнити': least squares with the current cycle numbers and types; the doubtful cycle numbers are
+    """'Refine': least squares with the current cycle numbers and types; the doubtful cycle numbers are
     re-read against the refined T0 and P."""
     overrides = overrides or {}
     jd = np.array([e.jd for e in ext])
@@ -274,7 +274,7 @@ def shape(epoch, oc_values, mask, model):
     """Fit the shape of O-C against the cycle number: 'line', 'parabola' or 'sine' (+ line, BIC).
     Returns (parameters for the panel, curve function of the cycle number)."""
     if mask.sum() < {"line": 3, "parabola": 4, "sine": 7}[model]:
-        raise ValueError("Замало точок для форми O−C")
+        raise ValueError("Too few points for the O−C shape")
     x, y = epoch[mask].astype(float), oc_values[mask]
     if model in ("line", "parabola"):
         p = np.polyfit(x, y, 1 if model == "line" else 2)

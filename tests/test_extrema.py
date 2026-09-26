@@ -54,7 +54,7 @@ def test_star_to_oc():
         sectors = process_star(find_sectors(d), progress=lambda i, n: done.append((i, n)), workers=2)
         assert done[-1] == (4, 4)
         bad = [s for s in sectors if s.error]
-        assert [s.number for s in bad] == [5] and "замало" in bad[0].error
+        assert [s.number for s in bad] == [5] and "too few" in bad[0].error
         ext = extrema_of(sectors)
         assert all(abs(s.period - P) < 0.01 for s in sectors if not s.error)
         oc = compute(ext, [s.period for s in sectors if not s.error])

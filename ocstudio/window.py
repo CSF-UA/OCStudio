@@ -23,14 +23,14 @@ from ocstudio import oc as O
 
 # label, colour, marker; the four colours pass the colour-blind checks as a set, the markers differ too
 SERIES = {
-    "primary_min": ("Головний мінімум", "#2a78d6", "disc", "●"),
-    "secondary_min": ("Вторинний мінімум", "#eb6834", "square", "■"),
-    "max_I": ("Максимум I", "#1baf7a", "triangle_up", "▲"),
-    "max_II": ("Максимум II", "#4a3aa7", "diamond", "◆"),
+    "primary_min": ("Primary minimum", "#2a78d6", "disc", "●"),
+    "secondary_min": ("Secondary minimum", "#eb6834", "square", "■"),
+    "max_I": ("Maximum I", "#1baf7a", "triangle_up", "▲"),
+    "max_II": ("Maximum II", "#4a3aa7", "diamond", "◆"),
 }
 DOUBT_RIM = "#fab219"  # status "warning": doubtful cycle number
-SHAPES = {"": "немає", "line": "лінія", "parabola": "парабола", "sine": "синусоїда + лінія"}
-COLS = ["JD", "O−C, д", "min/max", "тип", "N", "[N]", "correction", "сектор", "метод", "стан"]
+SHAPES = {"": "none", "line": "line", "parabola": "parabola", "sine": "sine + line"}
+COLS = ["JD", "O−C, d", "min/max", "type", "N", "[N]", "correction", "sector", "method", "state"]
 
 
 def button(text, slot):
@@ -121,7 +121,7 @@ class Run(QThread):
         try:
             self.result.emit(X.process_star(self.sectors, lambda i, n: self.progress.emit(i, n)))
         except Exception as e:  # e.g. worker processes that cannot start
-            self.failed.emit(f"Обробка не вдалася: {e}")
+            self.failed.emit(f"Processing failed: {e}")
 
 
 class Window(QMainWindow):
@@ -138,47 +138,47 @@ class Window(QMainWindow):
         self.shape_params = {}
 
         # left: star and sectors
-        self.star = QLabel("Відкрийте теку зорі з секторами .tess")
+        self.star = QLabel("Open a star folder with .tess sectors")
         self.star.setWordWrap(True)
         self.sector_table = QTableWidget(0, 4)
-        self.sector_table.setHorizontalHeaderLabels(["Сектор", "P, д", "Тип", "Точки"])
+        self.sector_table.setHorizontalHeaderLabels(["Sector", "P, d", "Type", "Points"])
         self.sector_table.verticalHeader().hide()
         self.sector_table.horizontalHeader().setStretchLastSection(True)
         self.sector_table.itemChanged.connect(lambda it: it.column() == 0 and self.recompute())
         self.bar = QProgressBar()
         left = QWidget()
-        box(QVBoxLayout(left), button("Відкрити теку…", self.choose_folder), self.star, self.sector_table,
-            button("Запустити", self.start), self.bar)
+        box(QVBoxLayout(left), button("Open folder…", self.choose_folder), self.star, self.sector_table,
+            button("Run", self.start), self.bar)
         left.setFixedWidth(330)
 
         # middle: O-C over the point view and the table
-        self.plot = Plot("JD − 2 457 000", "O − C, д")
+        self.plot = Plot("JD − 2 457 000", "O − C, d")
         self.points = visuals.Markers(parent=self.plot.view.scene)
         self.curve = visuals.Line(color=COLORS["text"], width=2, parent=self.plot.view.scene)
         self.ring = visuals.Markers(parent=self.plot.view.scene)
         for v in (self.points, self.curve, self.ring):
             v.set_gl_state(depth_test=False)
         self.plot.clicked.connect(self._pick)
-        self.lc = Plot("JD − 2 457 000", "−зоряна величина")
+        self.lc = Plot("JD − 2 457 000", "−magnitude")
         self.lc_points = visuals.Markers(parent=self.lc.view.scene)
         self.lc_fit = visuals.Line(color=COLORS["t0_marker"], width=2, parent=self.lc.view.scene)
         self.lc_t0 = visuals.Line(color=COLORS["accent"], width=1, parent=self.lc.view.scene)
         for v in (self.lc_points, self.lc_fit, self.lc_t0):
             v.set_gl_state(depth_test=False)
-        self.info = QLabel("Клацніть точку на O−C")
+        self.info = QLabel("Click a point on the O−C")
         self.info.setMinimumWidth(260)
         self.info.setWordWrap(True)
-        self.exclude_btn = button("Виключити (D)", self.toggle_exclude)
+        self.exclude_btn = button("Exclude (D)", self.toggle_exclude)
         self.type_box = QComboBox()
         self.type_box.activated.connect(self.set_type)
         self.method_box = QComboBox()
         self.method_box.addItems(list(X.METHODS))
         point = QWidget()
         controls = box(QVBoxLayout(), self.info, self.exclude_btn,
-                       box(QHBoxLayout(), button("Корекція −1", lambda: self.shift(-1)),
+                       box(QHBoxLayout(), button("Correction −1", lambda: self.shift(-1)),
                            button("+1", lambda: self.shift(1))),
-                       box(QHBoxLayout(), QLabel("Тип:"), self.type_box),
-                       box(QHBoxLayout(), self.method_box, button("Перепідігнати", self.refit_point)),
+                       box(QHBoxLayout(), QLabel("Type:"), self.type_box),
+                       box(QHBoxLayout(), self.method_box, button("Refit", self.refit_point)),
                        box(QHBoxLayout(), button("← (←)", lambda: self.step(-1)), button("(→) →", lambda: self.step(1))))
         controls.addStretch()
         box(QHBoxLayout(point), self.lc, controls)
@@ -189,8 +189,8 @@ class Window(QMainWindow):
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.currentCellChanged.connect(lambda r, *_: r >= 0 and r != self.sel and self.select(r))
         self.tabs = QTabWidget()
-        self.tabs.addTab(point, "Точка")
-        self.tabs.addTab(self.table, "Таблиця")
+        self.tabs.addTab(point, "Point")
+        self.tabs.addTab(self.table, "Table")
         self.tabs.currentChanged.connect(lambda _: self.fill_table())
         middle = QSplitter(Qt.Orientation.Vertical)
         middle.addWidget(self.plot)
@@ -203,19 +203,19 @@ class Window(QMainWindow):
             e.editingFinished.connect(self._typed)
         self.kb = QLabel()
         self.kb.setWordWrap(True)
-        eph = QGroupBox("Ефемерида")
+        eph = QGroupBox("Ephemeris")
         grid = QGridLayout(eph)
         grid.addWidget(QLabel("T0"), 0, 0)
         grid.addWidget(self.t0_edit, 0, 1)
         grid.addWidget(QLabel("P"), 1, 0)
         grid.addWidget(self.p_edit, 1, 1)
-        grid.addLayout(box(QHBoxLayout(), button("Уточнити", self.refine), button("Авто", self.reset_ephemeris)),
+        grid.addLayout(box(QHBoxLayout(), button("Refine", self.refine), button("Auto", self.reset_ephemeris)),
                        2, 0, 1, 2)
         grid.addWidget(self.kb, 3, 0, 1, 2)
-        ser = QGroupBox("Ряди")
+        ser = QGroupBox("Series")
         grid = QGridLayout(ser)
-        grid.addWidget(QLabel("показати"), 0, 1)
-        grid.addWidget(QLabel("в підгонці"), 0, 2)
+        grid.addWidget(QLabel("show"), 0, 1)
+        grid.addWidget(QLabel("in fit"), 0, 2)
         self.show_box, self.fit_box = {}, {}
         for r, (k, (label, color, _, glyph)) in enumerate(SERIES.items(), 1):
             name = QLabel(f"<span style='color:{color}'>{glyph}</span> {label}")
@@ -227,10 +227,10 @@ class Window(QMainWindow):
             grid.addWidget(name, r, 0)
             grid.addWidget(self.show_box[k], r, 1)
             grid.addWidget(self.fit_box[k], r, 2)
-        self.x_cycles = QCheckBox("Вісь X: номер циклу E")
+        self.x_cycles = QCheckBox("X axis: cycle number E")
         self.x_cycles.toggled.connect(lambda _: self.redraw(reset=True))
         grid.addWidget(self.x_cycles, len(SERIES) + 1, 0, 1, 3)
-        form = QGroupBox("Форма O−C")
+        form = QGroupBox("O−C shape")
         lay = QVBoxLayout(form)
         self.shape_group = QButtonGroup(self)
         for model, label in SHAPES.items():
@@ -244,7 +244,7 @@ class Window(QMainWindow):
         self.shape_label.setWordWrap(True)
         lay.addWidget(self.shape_label)
         right = QWidget()
-        box(QVBoxLayout(right), eph, ser, form, button("Зберегти CSV…", self.save)).addStretch()
+        box(QVBoxLayout(right), eph, ser, form, button("Save CSV…", self.save)).addStretch()
         right.setFixedWidth(320)
 
         central = QWidget()
@@ -259,24 +259,24 @@ class Window(QMainWindow):
 
     def closeEvent(self, e):
         if self.run:  # the worker processes cannot be interrupted; let them finish
-            self.status("Завершення обробки…")
+            self.status("Finishing the processing…")
             self.run.wait()
         super().closeEvent(e)
 
     # ---- folder and sectors
     def choose_folder(self):
-        path = QFileDialog.getExistingDirectory(self, "Тека зорі з секторами .tess")
+        path = QFileDialog.getExistingDirectory(self, "Star folder with .tess sectors")
         if path:
             self.open_folder(path)
 
     def open_folder(self, path):
         if self.run:
-            return self.status("Зачекайте: сектори ще обробляються")
+            return self.status("Wait: the sectors are still being processed")
         self.folder = Path(path).resolve()
         self.sectors, self.overrides, self.manual = X.find_sectors(self.folder), {}, None
         self.ext, self.auto, self.oc, self.sel = [], None, None, None
-        self.error = "" if self.sectors else "У теці немає файлів .tess"
-        self.star.setText(f"<b>{self.folder.name}</b>: {len(self.sectors)} файлів .tess")
+        self.error = "" if self.sectors else "No .tess files in the folder"
+        self.star.setText(f"<b>{self.folder.name}</b>: {len(self.sectors)} .tess files")
         self._fill_sectors()
         self.start()
         self.redraw()
@@ -291,7 +291,7 @@ class Window(QMainWindow):
         self.run.result.connect(self._processed)
         self.run.failed.connect(self.status)
         self.run.finished.connect(lambda: setattr(self, "run", None))
-        self.status("Обробка секторів…")
+        self.status("Processing the sectors…")
         self.run.start()
 
     def _processed(self, sectors):
@@ -299,7 +299,7 @@ class Window(QMainWindow):
         self._fill_sectors()
         self.recompute(reset=True)
         ok = sum(not s.error for s in sectors)
-        self.status(f"Оброблено секторів: {ok} з {len(sectors)}")
+        self.status(f"Sectors processed: {ok} of {len(sectors)}")
 
     def _fill_sectors(self):
         t = self.sector_table
@@ -338,7 +338,7 @@ class Window(QMainWindow):
             if self.manual:
                 T0, P, refined = self.manual
                 self.oc = O.with_ephemeris(self.ext, self.auto, T0, P, self.overrides, self.fit_types())
-                if refined:  # «Уточнити» stays on: every change is refitted like the button did
+                if refined:  # «Refine» stays on: every change is refitted like the button did
                     self.oc = O.refit(self.ext, self.oc, self.overrides, self.fit_types())
         except ValueError as e:
             if self.auto and self.manual:  # a wild T0 or P: back to the automatic ephemeris
@@ -363,7 +363,7 @@ class Window(QMainWindow):
         jd = np.array([e.jd for e in self.ext])
         self.v = oc.values(jd)
         self.x = oc.E + O.corrections(oc.cls) if self.x_cycles.isChecked() else jd
-        self.plot.set_xlabel("E, номер циклу" if self.x_cycles.isChecked() else "JD − 2 457 000")
+        self.plot.set_xlabel("E, cycle number" if self.x_cycles.isChecked() else "JD − 2 457 000")
         self.shown = np.isin(oc.cls, [k for k, b in self.show_box.items() if b.isChecked()])
         m = self.shown
         color = np.array([Color(SERIES[k][1]).rgba for k in oc.cls]).reshape(-1, 4)
@@ -381,9 +381,9 @@ class Window(QMainWindow):
         self.p_edit.setText(f"{oc.P:.8f}")
         self._typed_text = (self.t0_edit.text(), self.p_edit.text())
         k, b = O.control_line(jd - oc.T0, self.v, oc.used)
-        self.kb.setText(f"{'Уточнено' if self.manual and self.manual[2] else 'Вручну' if self.manual else 'Автоматично'}. Контроль O−C = k(JD − T0) + b:\n"
-                        f"k = {k:.2e}, b = {b:.2e} д\nточок {len(jd)}: у підгонці {oc.used.sum()}, "
-                        f"виключено {oc.excluded.sum()}, сумнівний цикл {oc.doubt.sum()}")
+        self.kb.setText(f"{'Refined' if self.manual and self.manual[2] else 'Manual' if self.manual else 'Automatic'}. Control line O−C = k(JD − T0) + b:\n"
+                        f"k = {k:.2e}, b = {b:.2e} d\npoints {len(jd)}: in fit {oc.used.sum()}, "
+                        f"excluded {oc.excluded.sum()}, doubtful cycle {oc.doubt.sum()}")
         if reset:
             ok = m & ~oc.excluded if (m & ~oc.excluded).any() else m
             if ok.any():
@@ -415,7 +415,7 @@ class Window(QMainWindow):
         try:
             T0, P = (float(e.text().replace(",", ".")) for e in (self.t0_edit, self.p_edit))
         except ValueError:
-            return self.status("T0 і P мають бути числами")
+            return self.status("T0 and P must be numbers")
         self.manual = (T0, P, False)
         self.recompute()
 
@@ -463,7 +463,7 @@ class Window(QMainWindow):
         for v in (self.lc_points, self.lc_fit, self.lc_t0):
             v.visible = has
         if not has:
-            self.info.setText("Клацніть точку на O−C")
+            self.info.setText("Click a point on the O−C")
             self.lc.canvas.update()
             return
         e = self.ext[i]
@@ -479,13 +479,13 @@ class Window(QMainWindow):
         self.lc_fit.set_data(np.c_[xs, -curve(e.fit, xs)])
         self.lc_t0.set_data(np.array([[e.jd, y.min()], [e.jd, y.max()]]))
         self.lc.show_range(x, y)
-        flag = "сумнівний номер циклу" if oc.doubt[i] else "викид (автоматично)" if oc.clipped[i] else ""
+        flag = "doubtful cycle number" if oc.doubt[i] else "outlier (automatic)" if oc.clipped[i] else ""
         self.info.setText(
-            f"<b>{SERIES[oc.cls[i]][0]}</b> ({e.kind}), сектор {e.sector}, вікно {e.start}–{e.end}<br>"
-            f"JD {e.jd:.6f}, E {oc.E[i]}<br>O−C {self.v[i]:.6f} д = {self.v[i] * 1440:.2f} хв<br>"
-            f"метод {e.method}; {'виключена' if oc.excluded[i] else 'у рахунку'}"
+            f"<b>{SERIES[oc.cls[i]][0]}</b> ({e.kind}), sector {e.sector}, window {e.start}–{e.end}<br>"
+            f"JD {e.jd:.6f}, E {oc.E[i]}<br>O−C {self.v[i]:.6f} d = {self.v[i] * 1440:.2f} min<br>"
+            f"method {e.method}; {'excluded' if oc.excluded[i] else 'included'}"
             + (f"<br><span style='color:{COLORS['warning']}'>⚠ {flag}</span>" if flag else ""))
-        self.exclude_btn.setText("Повернути (D)" if oc.excluded[i] else "Виключити (D)")
+        self.exclude_btn.setText("Include (D)" if oc.excluded[i] else "Exclude (D)")
         self.type_box.clear()
         for k in (O.MIN_TYPES if e.kind == "min" else ("max_I", "max_II")):
             self.type_box.addItem(SERIES[k][0], k)
@@ -518,7 +518,7 @@ class Window(QMainWindow):
         try:
             new = X.refit(s, e, self.method_box.currentText())
         except Exception as ex:
-            return self.status(f"Не вдалося перепідігнати: {ex}")
+            return self.status(f"Refit failed: {ex}")
         s.extrema = [new if x.key == e.key else x for x in s.extrema]
         self.recompute()
 
@@ -532,7 +532,7 @@ class Window(QMainWindow):
         t.setUpdatesEnabled(False)
         t.setRowCount(len(rs))
         for r, row in enumerate(rs):
-            state = ("виключено" if row["excluded"] else "") + (f", {row['flag']}" if row["flag"] else "")
+            state = ("excluded" if row["excluded"] else "") + (f", {row['flag']}" if row["flag"] else "")
             vals = [f"{row['JD']:.6f}", f"{row['O-C']:.6f}", row["min/max"], row["type"], f"{row['N']:.4f}",
                     str(row["[N]"]), f"{row['correction']:g}", str(row["sector"]), row["method"], state.strip(", ")]
             for c, v in enumerate(vals):
@@ -544,9 +544,9 @@ class Window(QMainWindow):
 
     def save(self):
         if self.oc is None:
-            return self.status("Немає O−C для збереження")
+            return self.status("No O−C to save")
         name = self.folder.name
-        path, _ = QFileDialog.getSaveFileName(self, "Зберегти таблицю O−C", str(self.folder / f"{name}_oc.csv"),
+        path, _ = QFileDialog.getSaveFileName(self, "Save the O−C table", str(self.folder / f"{name}_oc.csv"),
                                               "CSV (*.csv)")
         if not path:
             return
@@ -560,5 +560,5 @@ class Window(QMainWindow):
         try:
             O.write_csv(path, eph_path, O.rows(self.ext, self.oc), eph)
         except OSError as e:
-            return self.status(f"Не вдалося зберегти: {e}")
-        self.status(f"Збережено {path.name} і {eph_path.name}")
+            return self.status(f"Could not save: {e}")
+        self.status(f"Saved {path.name} and {eph_path.name}")

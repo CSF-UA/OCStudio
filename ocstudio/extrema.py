@@ -42,7 +42,7 @@ def find_sectors(folder):
         m = SECTOR.search(f"{p.parent.name}/{p.name}")
         s = Sector(int(m.group(1)) if m else 1000 + i, p)
         if s.number in seen:
-            s.error = f"той самий сектор, що й {seen[s.number].relative_to(folder)}"
+            s.error = f"same sector as {seen[s.number].relative_to(folder)}"
         seen.setdefault(s.number, p)
         out.append(s)
     return sorted(out, key=lambda s: s.number)
@@ -55,11 +55,11 @@ def process_sector(s):
     try:
         s.x, s.y = get_data(str(s.path))
         if s.x.size < 100:
-            raise ValueError(f"замало точок ({s.x.size})")
+            raise ValueError(f"too few points ({s.x.size})")
         start, end, kind, info = auto_split(s.x, s.y)
         s.period, s.type, s.windows = float(info["period"]), info["type"], len(start)
         if not start:
-            raise ValueError("немає періоду" if s.period <= 0 else "немає вікон")
+            raise ValueError("no period" if s.period <= 0 else "no windows")
         base = float(np.median(s.y))
         with np.errstate(all="ignore"):  # overflows of rejected trial profiles
             fits = approximate_all(s.x, s.y, [Interval(a, b, k) for a, b, k in zip(start, end, kind)],

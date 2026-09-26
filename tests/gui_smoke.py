@@ -60,10 +60,10 @@ def main():
     i = int(np.flatnonzero(w.shown)[3])
     px, py = w.plot.to_screen(np.array([[w.x[i], w.v[i]]]))[0]
     w._pick(px, py)
-    assert w.sel == i and "сектор" in w.info.text()
+    assert w.sel == i and "sector" in w.info.text()
     v0 = w.v[i]
     w.toggle_exclude()
-    assert w.oc.excluded[i] and w.exclude_btn.text().startswith("Повернути")
+    assert w.oc.excluded[i] and w.exclude_btn.text().startswith("Include")
     w.toggle_exclude()
     assert not w.oc.excluded[i]
     w.shift(1)
@@ -129,7 +129,7 @@ def main():
     assert len(w.ext) < n and w.oc is not None
     for r in range(w.sector_table.rowCount()):
         w.sector_table.item(r, 0).setCheckState(w.sector_table.item(r, 0).checkState().__class__.Unchecked)
-    assert w.oc is None and "Менше" in w.plot.title.text
+    assert w.oc is None and "Fewer" in w.plot.title.text
     w.sector_table.item(0, 0).setCheckState(w.sector_table.item(0, 0).checkState().__class__.Checked)
     w.sector_table.item(1, 0).setCheckState(w.sector_table.item(1, 0).checkState().__class__.Checked)
 
@@ -148,21 +148,21 @@ def main():
     assert "shape a" in eph
     QFileDialog.getSaveFileName = staticmethod(lambda *a, **k: ("/nonexistent_dir/x_oc.csv", ""))
     w.save()
-    assert w.statusBar().currentMessage().startswith("Не вдалося зберегти")
+    assert w.statusBar().currentMessage().startswith("Could not save")
     QFileDialog.getSaveFileName = staticmethod(lambda *a, **k: (str(out), ""))
     w.grab().save(str(OUT / "gui_window.png"))
     print("GUI smoke ok:", len(w.ext), "extrema,", w.statusBar().currentMessage())
     empty = Path(tmp.name, "empty")
     empty.mkdir()
     w.open_folder(empty)
-    assert w.oc is None and w.plot.title.text == "У теці немає файлів .tess" and w.sector_table.rowCount() == 0
+    assert w.oc is None and w.plot.title.text == "No .tess files in the folder" and w.sector_table.rowCount() == 0
 
     junk = Path(tmp.name, "junk")
     junk.mkdir()
     (junk / "x-s0001-.tess").write_text("1 2\n3 4\n")
     w.open_folder(junk)
     wait(app, w)
-    assert w.oc is None and w.plot.title.text.startswith("Менше 3")
+    assert w.oc is None and w.plot.title.text.startswith("Fewer than 3")
 
     w.open_folder(folder)
     w.close()

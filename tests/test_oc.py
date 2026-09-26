@@ -3,6 +3,7 @@
 import csv
 import sys
 import tempfile
+import traceback
 from pathlib import Path
 
 import numpy as np
@@ -207,16 +208,16 @@ def test_wild_ephemeris():
             raise AssertionError(Pw)
         except ValueError:
             pass
-    # wild T0/P inputs must raise ValueError with Cyrillic message
+    # wild T0/P inputs must raise oc.py's own ValueError, not a library error
     for T0w, Pw in (("abc", P), (None, P), (auto.T0, 1e9), (auto.T0, 1e5), (1e20, P), (auto.T0, 1e-300)):
         try:
             man = with_ephemeris(ext, auto, T0w, Pw)
             try:
                 refit(ext, man)
             except ValueError as e:
-                assert any(ord(c) > 127 for c in str(e)), f"no Cyrillic in: {e}"
+                assert traceback.extract_tb(e.__traceback__)[-1].filename.endswith("oc.py"), e
         except ValueError as e:
-            assert any(ord(c) > 127 for c in str(e)), f"no Cyrillic in: {e}"
+            assert traceback.extract_tb(e.__traceback__)[-1].filename.endswith("oc.py"), e
     # far-off period with inf and None in compute
     assert abs(compute(ext, [float("inf"), P, None]).P - P) < 1e-6
 
