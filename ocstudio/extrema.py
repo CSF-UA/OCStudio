@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from apps.approximation.logic import Interval, approximate_all, recompute_result
+from apps.approximation.logic import Interval, _core, approximate_all, evaluate, recompute_result
 from splitter.auto import auto_split
 from splitter.core import get_data
 
@@ -32,6 +32,7 @@ class Sector:
     period: float = 0.0
     type: str = ""
     windows: int = 0
+    noise: float = 0.0  # point-to-point scatter of the magnitudes
     extrema: list = field(default_factory=list)
     error: str = ""
 
@@ -64,12 +65,15 @@ def process_sector(s):
         if not start:
             raise ValueError("no period" if s.period <= 0 else "no windows")
         base = float(np.median(s.y))
+        d = np.diff(s.y)
+        s.noise = float(1.4826 * np.median(np.abs(d - np.median(d))) / np.sqrt(2))
         with np.errstate(all="ignore"):  # overflows of rejected trial profiles
             fits = approximate_all(s.x, s.y, [Interval(a, b, k) for a, b, k in zip(start, end, kind)],
                                    METHODS["auto"][0], WINGS)
             s.extrema = [Extremum(f.t0, f.kind, abs(f.y_at_t0 - base), s.number, f.interval.start, f.interval.end,
                                   f.method, f, f.sigma_t0) for f in fits]
             for e in s.extrema:
+                e.q = quality(s, e.fit)
                 for m in ALTERNATIVES[e.kind]:
                     try:
                         e.alts[m] = refit(s, e, m)
@@ -79,6 +83,19 @@ def process_sector(s):
     except Exception as e:  # a broken sector must not stop the star
         s.error = str(e) or type(e).__name__
     return s
+
+
+def quality(sector, f):
+    """rms of the curve of fit f on the core of its window (the part beyond half the extremum's height, where
+    the timing is; the same points for every method), in units of the sector's point-to-point noise:
+    about 1 when the curve follows the points. NaN when the core has under 5 points."""
+    seg = slice(f.interval.start, min(f.interval.end, sector.x.size - 1) + 1)
+    x, y = sector.x[seg], sector.y[seg]
+    c = _core(x, y)  # astrolab's: where its near-extremum functions are fitted
+    x, y = x[c], y[c]
+    if x.size < 5:
+        return float("nan")
+    return float(np.sqrt(np.mean((y - evaluate(f, x)) ** 2)) / max(sector.noise, 1e-12))
 
 
 def process_star(sectors, progress=None, workers=None):
@@ -105,4 +122,6 @@ def refit(sector, e, method):
     with np.errstate(all="ignore"):
         f = recompute_result(sector.x, sector.y, e.fit, choice, wings)
     base = float(np.median(sector.y))
-    return Extremum(f.t0, f.kind, abs(f.y_at_t0 - base), e.sector, e.start, e.end, f.method, f, f.sigma_t0)
+    new = Extremum(f.t0, f.kind, abs(f.y_at_t0 - base), e.sector, e.start, e.end, f.method, f, f.sigma_t0)
+    new.q = quality(sector, f)
+    return new

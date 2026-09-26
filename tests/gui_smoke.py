@@ -52,7 +52,7 @@ def main():
     noisy = O.noisy_series(w.ext, w.oc)
     assert all(w.show_box[k].isChecked() == (k not in noisy) for k in w.show_box)
     assert ("Hidden" in w.series_note.text()) == bool(noisy) and w.bars.visible
-    assert ("Methods" not in w.series_note.text() or w.pick) and all(e.method for e in w.ext)
+    assert ("Methods used" not in w.series_note.text() or w.pick) and all(e.method for e in w.ext)
     w.bars_box.setChecked(False)
     assert not w.bars.visible and w.points.visible
     w.bars_box.setChecked(True)

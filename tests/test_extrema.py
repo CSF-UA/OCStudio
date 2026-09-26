@@ -66,6 +66,8 @@ def test_star_to_oc():
         from ocstudio.extrema import ALTERNATIVES
         assert all(set(e.alts) <= set(ALTERNATIVES[e.kind]) for e in ext) and all("sym" in e.alts for e in ext)
         assert all(a.key == e.key and a.depth == e.depth and a.kind == e.kind for e in ext for a in e.alts.values())
+        q = np.array([e.q for e in ext])
+        assert np.isfinite(q).all() and np.median(q) < 2, np.median(q)  # the curves follow the points
         sig = np.array([e.sigma for e in ext])
         assert (sig[prim] > 0).all() and np.median(sig[prim]) < 2e-3 and not oc.imprecise.any()  # the fit's error
         assert len(extrema_of(sectors, enabled={1, 2})) < len(ext)

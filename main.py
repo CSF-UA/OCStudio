@@ -21,8 +21,8 @@ def batch(folder):
     oc = compute(ext, periods)
     methods, pick = pick_methods(ext, oc, periods)  # per series the most precise method, as in the window
     ext, oc = compute_picked(ext, periods, pick)
-    for k, (m, a, b) in methods.items():
-        print(f"  {k}: {m}, timing scatter {a * 1440:.2g} -> {b * 1440:.2g} min")
+    for k, (m, a, b, qa, qb) in methods.items():
+        print(f"  {k}: {m}, timing scatter {a * 1440:.2g} -> {b * 1440:.2g} min, off the points {qa:.1f} -> {qb:.1f} x noise")
     jd = np.array([e.jd for e in ext])
     k, b = control_line(jd - oc.T0, oc.values(jd), oc.used)
     eph = {"T0": oc.T0, "P": oc.P, "k": k, "b": b, "fit": "primary_min"}

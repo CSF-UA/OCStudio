@@ -10,9 +10,12 @@ O−C diagram of a star from its TESS sectors in one window, by the CSF AstroLab
    the folder is opened (**Run** runs it again).
    Every window is also timed by other methods of astrolab: minima by a polynomial, a symmetric polynomial
    and a wall-supported line, maxima by a symmetric polynomial and an asymptotic parabola (the near-extremum
-   functions of MAVKA, Andrych & Andronov 2019). For each series the most precise method replaces Auto if it
-   cuts the timing scatter by 10 % or more (e.g. flat maxima between eclipses: the symmetric polynomial
-   times the centre of the plateau instead of its higher end). The timing scatter is taken around the
+   functions of MAVKA, Andrych & Andronov 2019). For each series only methods whose curves follow the
+   points take part: the rms on the core of the window (beyond half the extremum's height) in units of the
+   noise, near the best method's or at the noise level. Of those, the most precise method replaces Auto if
+   it cuts the timing scatter by 10 % or more (e.g. flat maxima between eclipses: the symmetric polynomial
+   times the centre of the plateau instead of its higher end), or at once if Auto's curves miss the points
+   (e.g. Brat+ on flat-bottomed eclipses, where the wall-supported line fits). The timing scatter is taken around the
    local median of the primary minima (their own neighbours, for the primary minima), so real O−C changes
    that move every extremum alike (a third body, a period change) do not hide the difference between
    methods. The series in the fit (primary minima) change method only if the ephemeris fit does not get

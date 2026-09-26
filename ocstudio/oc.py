@@ -16,7 +16,8 @@ C = {"primary_min": 0.0, "max_I": 0.25, "secondary_min": 0.5, "max_II": 0.75}
 DOUBT = 0.1  # cycles off the expected phase of the type: the cycle number may be wrong
 IMPRECISE = 5.0  # timing error over this many times the median of its type: left out like a doubtful point
 NOISY = 5.0  # O-C scatter of a type over this many times that of the minima (and over 1% of P): hidden
-BETTER = 0.9  # another method replaces the automatic fit of a type when it cuts the O-C scatter by 10 %+
+BETTER = 0.9  # another method replaces the automatic fit of a type when it cuts the timing scatter by 10 %+
+ADEQUATE = (1.5, 0.25, 1.5)  # a method follows the points: median q <= 1.5 x the best one's + 0.25, or <= 1.5
 MIN_TYPES = ("primary_min", "secondary_min")
 
 
@@ -32,6 +33,7 @@ class Extremum:
     fit: object = None  # astrolab FitResult, drawn in the point view
     sigma: float = float("nan")  # 1-sigma error of jd from the fit, days
     alts: dict = field(default_factory=dict, repr=False)  # the same window timed by other methods: method -> Extremum
+    q: float = float("nan")  # rms of the fit on the core of its window / point-to-point noise: ~1 when it follows
 
     @property
     def key(self):
@@ -300,13 +302,18 @@ def _trend(tr, vr, t, half, loo=False):
 
 
 def best_methods(ext, oc):
-    """Per type, the fitting method with the least timing scatter, among the alternative timings every
-    extremum carries (e.alts; a point without the method keeps its own), if BETTER than the automatic fit
-    (the scatter of a sample is noisy). Real O-C changes (a third body, period changes) move every extremum
-    alike and are taken out: the scatter is that around the local median of the automatic primary minima,
-    or for the primary minima around the local median of their own neighbours, within max(5 d, 3 P).
+    """Per type, the fitting method to time it, among Auto and the alternative timings every extremum carries
+    (e.alts; a point without the method keeps its own).
+    1. Only methods whose curves follow the points take part: median q (rms on the core of the window in
+       units of the noise) within ADEQUATE of the best method's, or at the noise level. A method that is precise but misses the
+       shape (a symmetric function on an asymmetric hump) times something else than the extremum.
+    2. Of those, the least timing scatter wins; it replaces Auto if BETTER, or at once if Auto's curves do
+       not follow the points. Real O-C changes (a third body, period changes) move every extremum alike and
+       are taken out: the scatter is that around the local median of the automatic primary minima, or for
+       the primary minima around the local median of their own neighbours, within max(5 d, 3 P).
     The cycle numbers and the ephemeris stay those of oc (automatic timings, sorted by time).
-    Returns {type: (method, scatter before, scatter after)} for the types that change."""
+    Returns {type: (method, scatter before, scatter after, q of Auto, q of the method)} for the types that
+    change."""
     jd = np.array([e.jd for e in ext])
     v = oc.values(jd)
     half = max(5.0, 3 * oc.P)
@@ -325,16 +332,26 @@ def best_methods(ext, oc):
             r = r[np.isfinite(r)]
             return _scatter(r) if r.size >= 5 else float("nan")
 
+        names = sorted({a for i in m for a in ext[i].alts})
+        q = {"": np.nanmedian([ext[i].q for i in m]) if any(np.isfinite(ext[i].q) for i in m) else np.nan}
+        for meth in names:
+            qs = [ext[i].alts[meth].q for i in m if meth in ext[i].alts]
+            q[meth] = np.nanmedian(qs) if any(np.isfinite(qs)) else np.nan
+        known = [x for x in q.values() if np.isfinite(x)]
+        limit = max(ADEQUATE[0] * min(known) + ADEQUATE[1], ADEQUATE[2]) if known else np.inf
+        follows = {n for n, x in q.items() if not np.isfinite(x) or x <= limit}
         now = scatter(v[m])
         if not np.isfinite(now):
             continue
-        best = ("", BETTER * now)
-        for meth in sorted({a for i in m for a in ext[i].alts}):
+        best = ("", BETTER * now if "" in follows else np.inf)
+        for meth in names:
+            if meth not in follows:
+                continue
             s = scatter(v[m] + np.array([ext[i].alts[meth].jd - jd[i] if meth in ext[i].alts else 0.0 for i in m]))
             if s < best[1]:
                 best = (meth, s)
         if best[0]:
-            out[k] = (best[0], now, best[1])
+            out[k] = (best[0], now, best[1], q[""], q[best[0]])
     return out
 
 
@@ -346,13 +363,13 @@ def _fit_scatter(ext, oc):
 
 def pick_methods(ext, oc, periods, overrides=None, fit_types=("primary_min",)):
     """best_methods and the pick {window key: method} for compute_picked. The series in the fit keep Auto if
-    their method makes the scatter of the ephemeris fit larger (a star whose types or cycles are in doubt):
-    the ephemeris must not get worse. Returns (methods, pick)."""
+    their method makes the scatter of the ephemeris fit larger by over 10 % (a star whose types or cycles
+    are in doubt): the ephemeris must not get worse. Returns (methods, pick)."""
     methods = best_methods(ext, oc)
     pick = lambda ms: {e.key: ms[c][0] for e, c in zip(ext, oc.cls) if c in ms}
     if any(k in methods for k in fit_types):
         e2, o2 = compute_picked(ext, periods, pick(methods), overrides, fit_types)
-        if _fit_scatter(e2, o2) > _fit_scatter(ext, oc):
+        if _fit_scatter(e2, o2) > _fit_scatter(ext, oc) / BETTER:
             methods = {k: m for k, m in methods.items() if k not in fit_types}
     return methods, pick(methods)
 

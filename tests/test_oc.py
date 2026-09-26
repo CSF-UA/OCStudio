@@ -198,7 +198,7 @@ def test_best_method_per_series():
     oc = compute(ext, [P])
     methods = best_methods(ext, oc)
     assert set(methods) == {"max_I", "max_II"} and {m[0] for m in methods.values()} == {"sym"}, methods
-    assert all(after < 0.2 * before for _, before, after in methods.values()), methods
+    assert all(after < 0.2 * before for _, before, after, *_ in methods.values()), methods
     pick = {e.key: methods[c][0] for e, c in zip(ext, oc.cls) if c in methods}
     ext2, oc2 = compute_picked(ext, [P], pick)
     assert (oc2.cls == oc.cls).all() and abs(oc2.P - P) < 1e-6 and not oc2.doubt.any()
@@ -221,6 +221,27 @@ def test_best_method_sees_through_real_oc_changes():
     oc = compute(ext, [P])
     methods = best_methods(ext, oc)
     assert {k: m[0] for k, m in methods.items()} == {"max_I": "sym", "max_II": "sym"}, methods
+
+
+def test_method_must_follow_the_points():
+    """A method precise in time but off the points (a symmetric curve on an asymmetric hump) is not taken;
+    a method that follows the points replaces an Auto that does not, at equal precision (TIC 294206429)."""
+    ph = {"primary_min": 0.0, "max_I": 0.25, "secondary_min": 0.5, "max_II": 0.75}
+    ext, cls, n = star(phase=ph)
+    rng = np.random.default_rng(11)
+    for e, c in zip(ext, cls):
+        if c.startswith("max"):
+            e.q = 1.2
+            e.alts["sym"] = replace(e, jd=e.jd + rng.normal(0, 1e-5), q=6.0, method="sym", alts={})
+            e.alts["apar"] = replace(e, jd=e.jd + rng.normal(0, 5e-4), q=1.3, method="apar", alts={})
+            e.jd += rng.normal(0, 0.002)
+        elif c == "primary_min":
+            e.q = 20.0  # Brat+ off the flat bottom
+            e.alts["wsl"] = replace(e, q=3.0, method="wsl", alts={})
+    oc = compute(ext, [P])
+    methods = best_methods(ext, oc)
+    assert {k: m[0] for k, m in methods.items()} == {"max_I": "apar", "max_II": "apar", "primary_min": "wsl"}, methods
+    assert methods["primary_min"][3:] == (20.0, 3.0)
 
 
 def test_fitted_series_keeps_auto_if_the_ephemeris_gets_worse():
