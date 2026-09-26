@@ -36,12 +36,13 @@ class Sector:
 def find_sectors(folder):
     """Every .tess under the folder (subfolders too), numbered from its folder or file name (-s0012-, _S12_),
     else 1000 + its place. A second file of the same sector is left out with the reason."""
+    folder = Path(folder)
     out, seen = [], {}
-    for i, p in enumerate(sorted(Path(folder).rglob("*.tess"))):
+    for i, p in enumerate(sorted(folder.rglob("*.tess"))):
         m = SECTOR.search(f"{p.parent.name}/{p.name}")
         s = Sector(int(m.group(1)) if m else 1000 + i, p)
         if s.number in seen:
-            s.error = f"той самий сектор, що й {seen[s.number].name}"
+            s.error = f"той самий сектор, що й {seen[s.number].relative_to(folder)}"
         seen.setdefault(s.number, p)
         out.append(s)
     return sorted(out, key=lambda s: s.number)
@@ -58,7 +59,7 @@ def process_sector(s):
         start, end, kind, info = auto_split(s.x, s.y)
         s.period, s.type, s.windows = float(info["period"]), info["type"], len(start)
         if not start:
-            raise ValueError(f"немає вікон: {info['type']}")
+            raise ValueError("немає періоду" if s.period <= 0 else "немає вікон")
         base = float(np.median(s.y))
         with np.errstate(all="ignore"):  # overflows of rejected trial profiles
             fits = approximate_all(s.x, s.y, [Interval(a, b, k) for a, b, k in zip(start, end, kind)],
