@@ -45,6 +45,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setStyle("Fusion")
+    app.setPalette(app.style().standardPalette())  # light like the style sheet, also under a dark system theme
     font_id = QFontDatabase.addApplicationFont(str(Path(__file__).parent / "fonts" / "inter.ttf"))
     families = QFontDatabase.applicationFontFamilies(font_id) if font_id != -1 else []
     app.setFont(QFont(families[0] if families else "Inter", 10))
