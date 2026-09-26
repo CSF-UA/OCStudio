@@ -65,7 +65,7 @@ def process_sector(s):
             fits = approximate_all(s.x, s.y, [Interval(a, b, k) for a, b, k in zip(start, end, kind)],
                                    METHODS["auto"][0], WINGS)
         s.extrema = [Extremum(f.t0, f.kind, abs(f.y_at_t0 - base), s.number, f.interval.start, f.interval.end,
-                              f.method, f) for f in fits]
+                              f.method, f, f.sigma_t0) for f in fits]
     except Exception as e:  # a broken sector must not stop the star
         s.error = str(e) or type(e).__name__
     return s
@@ -95,4 +95,4 @@ def refit(sector, e, method):
     with np.errstate(all="ignore"):
         f = recompute_result(sector.x, sector.y, e.fit, choice, wings)
     base = float(np.median(sector.y))
-    return Extremum(f.t0, f.kind, abs(f.y_at_t0 - base), e.sector, e.start, e.end, f.method, f)
+    return Extremum(f.t0, f.kind, abs(f.y_at_t0 - base), e.sector, e.start, e.end, f.method, f, f.sigma_t0)

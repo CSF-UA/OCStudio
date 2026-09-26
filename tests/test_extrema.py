@@ -63,12 +63,14 @@ def test_star_to_oc():
         prim = oc.cls == "primary_min"
         assert prim.sum() >= 20 and np.abs(oc.values(jd)[prim]).max() < 2e-3
         assert set(oc.cls) <= {"primary_min", "secondary_min"}
+        sig = np.array([e.sigma for e in ext])
+        assert (sig[prim] > 0).all() and np.median(sig[prim]) < 2e-3 and not oc.imprecise.any()  # the fit's error
         assert len(extrema_of(sectors, enabled={1, 2})) < len(ext)
         s = sectors[0]
         e = s.extrema[0]
         for m in ("poly", "brat", "auto"):
             r = refit(s, e, m)
-            assert r.key == e.key and abs(r.jd - e.jd) < 5e-3, (m, r.jd - e.jd)
+            assert r.key == e.key and abs(r.jd - e.jd) < 5e-3 and 0 < r.sigma < 5e-3, (m, r.jd - e.jd, r.sigma)
 
 
 def test_batch():
@@ -79,7 +81,7 @@ def test_batch():
         write_star(star, [1, 2])
         main.batch(star)
         rows = Path(star, "TIC_1_oc.csv").read_text().splitlines()
-        assert rows[0] == "JD,O-C,min/max,type,N,[N],correction,sector,method,excluded,flag" and len(rows) > 20
+        assert rows[0] == "JD,O-C,sigma,min/max,type,N,[N],correction,sector,method,excluded,flag" and len(rows) > 20
         eph = dict(line.split(",") for line in Path(star, "TIC_1_ephemeris.csv").read_text().splitlines())
         assert abs(float(eph["P"]) - P) < 1e-4 and eph["fit"] == "primary_min"
 

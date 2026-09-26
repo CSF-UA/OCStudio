@@ -10,8 +10,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ocstudio.oc import (C, Extremum, Override, compute, control_line, refit, rows, shape,  # noqa: E402
-                         with_ephemeris, write_csv)
+from ocstudio.oc import (C, Extremum, Override, compute, control_line, noisy_series, refit, rows,  # noqa: E402
+                         shape, with_ephemeris, write_csv)
 
 T0, P = 1325.3, 2.5
 YEARS = (1, 2, 3, 27, 28, 61, 62)  # TESS sectors: 2 and 3 years apart
@@ -30,7 +30,8 @@ def star(P=P, T0=T0, sectors=YEARS, phase=None, depth=None, noise=2e-4, oc=lambd
                 t = T0 + P * (n + ph) + oc(T0 + P * n) + noise * rng.normal()
                 if a <= t <= a + 26 and not a + 13 < t < a + 14:
                     kind = "min" if k.endswith("min") else "max"
-                    out.append((Extremum(t, kind, depth[k] * (1 + 0.02 * rng.normal()), s, start=len(out)), k, n))
+                    out.append((Extremum(t, kind, depth[k] * (1 + 0.02 * rng.normal()), s, start=len(out),
+                                         sigma=noise), k, n))
     out.sort(key=lambda o: o[0].jd)
     return [o[0] for o in out], np.array([o[1] for o in out], object), np.array([o[2] for o in out])
 
@@ -143,6 +144,35 @@ def test_doubtful_cycle():
     oc = compute(ext, [P])
     assert oc.doubt[i] and oc.excluded[i] and oc.doubt.sum() == 1
     assert rows(ext, oc)[i]["flag"] == "doubtful cycle"
+
+
+def test_imprecise_timing():
+    ext, cls, n = star()
+    prim = [i for i in range(len(ext)) if cls[i] == "primary_min"]
+    i, j, k = prim[10], prim[11], [i for i in range(len(ext)) if cls[i] == "secondary_min"][4]
+    ext[i].sigma, ext[j].sigma, ext[k].sigma = 10 * ext[i].sigma, float("inf"), float("nan")
+    ext[i].jd += 0.004  # 20 sigma of the others, but its own error is as large: it must not pull the fit
+    oc = compute(ext, [P])
+    assert oc.imprecise[i] and oc.imprecise[j] and not oc.imprecise[k] and oc.imprecise.sum() == 2
+    assert oc.excluded[[i, j]].all() and not oc.used[[i, j]].any() and not oc.clipped[i]
+    assert rows(ext, oc)[i]["flag"] == "imprecise timing" and rows(ext, oc)[i]["sigma"] == ext[i].sigma
+    back = compute(ext, [P], {ext[i].key: Override(excluded=False)})  # the user's choice wins
+    assert back.used[i] and not back.excluded[i] and back.imprecise[i]
+
+
+def test_noisy_series_hidden():
+    ph = {"primary_min": 0.0, "max_I": 0.25, "secondary_min": 0.5, "max_II": 0.75}
+    ext, cls, n = star(phase=ph)
+    oc = compute(ext, [P])
+    assert noisy_series(ext, oc) == {}
+    rng = np.random.default_rng(3)
+    for e, c in zip(ext, cls):
+        if c.startswith("max"):  # spot waves: humps that wander by 0.03 P
+            e.jd += 0.03 * P * rng.normal()
+    oc = compute(ext, [P])
+    noisy = noisy_series(ext, oc)
+    assert set(noisy) == {"max_I", "max_II"} and min(noisy.values()) > 20, noisy
+    assert abs(oc.P - P) < 1e-6
 
 
 def test_table_follows_the_guide():
@@ -276,8 +306,8 @@ def test_csv():
         a, b = Path(d, "s_oc.csv"), Path(d, "s_ephemeris.csv")
         write_csv(a, b, rows(ext, oc), {"T0": oc.T0, "P": oc.P})
         head = next(csv.reader(open(a)))
-        assert head == ["JD", "O-C", "min/max", "type", "N", "[N]", "correction", "sector", "method", "excluded",
-                        "flag"]
+        assert head == ["JD", "O-C", "sigma", "min/max", "type", "N", "[N]", "correction", "sector", "method",
+                        "excluded", "flag"]
         assert sum(1 for _ in open(a)) == len(ext) + 1
         assert dict(csv.reader(open(b)))["P"] == str(oc.P)
 

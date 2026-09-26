@@ -5,7 +5,7 @@ description = "O-C diagram of a star from its TESS sectors in one window (CSF As
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "astrolab @ git+https://github.com/CSF-UA/astrolab@314b968ac249fabd9acd11731e5cd669978c9d3e",
+    "astrolab @ git+https://github.com/CSF-UA/astrolab@ecc64f3a67ac48cfa91d53b015d2a335e7ae1a31",
     "numpy>=2.4.0",
     "pyside6>=6.10.1",
     "scipy>=1.16.3",

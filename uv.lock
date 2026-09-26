@@ -111,7 +111,7 @@ wheels = [
 [[package]]
 name = "astrolab"
 version = "0.1.0"
-source = { git = "https://github.com/CSF-UA/astrolab?rev=314b968ac249fabd9acd11731e5cd669978c9d3e#314b968ac249fabd9acd11731e5cd669978c9d3e" }
+source = { git = "https://github.com/CSF-UA/astrolab?rev=ecc64f3a67ac48cfa91d53b015d2a335e7ae1a31#ecc64f3a67ac48cfa91d53b015d2a335e7ae1a31" }
 dependencies = [
     { name = "lightkurve" },
     { name = "matplotlib" },
@@ -1093,7 +1093,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "astrolab", git = "https://github.com/CSF-UA/astrolab?rev=314b968ac249fabd9acd11731e5cd669978c9d3e" },
+    { name = "astrolab", git = "https://github.com/CSF-UA/astrolab?rev=ecc64f3a67ac48cfa91d53b015d2a335e7ae1a31" },
     { name = "numpy", specifier = ">=2.4.0" },
     { name = "pyside6", specifier = ">=6.10.1" },
     { name = "scipy", specifier = ">=1.16.3" },

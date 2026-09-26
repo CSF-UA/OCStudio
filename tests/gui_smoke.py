@@ -49,6 +49,9 @@ def main():
     wait(app, w)
     assert w.oc is not None and len(w.ext) > 10, w.statusBar().currentMessage()
     n = len(w.ext)
+    noisy = O.noisy_series(w.ext, w.oc)
+    assert all(w.show_box[k].isChecked() == (k not in noisy) for k in w.show_box)
+    assert ("Hidden" in w.noisy_note.text()) == bool(noisy) and w.bars.visible
     w.resize(w.width() + 400, w.height() + 100)  # e.g. maximised after loading: the axis labels must follow
     for _ in range(10):
         app.processEvents()
@@ -60,15 +63,16 @@ def main():
     i = int(np.flatnonzero(w.shown)[3])
     px, py = w.plot.to_screen(np.array([[w.x[i], w.v[i]]]))[0]
     w._pick(px, py)
-    assert w.sel == i and "sector" in w.info.text()
-    v0 = w.v[i]
+    assert w.sel == i and "sector" in w.info.text() and " ± " in w.info.text()
+    v0, E0 = w.v[i], w.oc.E[i]
     w.toggle_exclude()
     assert w.oc.excluded[i] and w.exclude_btn.text().startswith("Include")
     w.toggle_exclude()
     assert not w.oc.excluded[i]
-    w.shift(1)
-    assert abs(w.v[i] - (v0 - w.oc.P)) < 1e-3
+    w.shift(1)  # (a point you included stays in the fit one cycle off, so the whole O-C may move: check E)
+    assert w.oc.E[i] == E0 + 1
     w.shift(-1)
+    assert w.oc.E[i] == E0 and abs(w.v[i] - v0) < 1e-6
     w.method_box.setCurrentText("poly")
     w.refit_point()
     assert w.ext[w.sel].method == "poly" and w.sel == i and abs(w.v[i] - v0) < 0.01
@@ -140,7 +144,7 @@ def main():
     QFileDialog.getSaveFileName = staticmethod(lambda *a, **k: (str(out), ""))
     w.save()
     head = next(csv.reader(open(out)))
-    assert head == ["JD", "O-C", "min/max", "type", "N", "[N]", "correction", "sector", "method", "excluded", "flag"]
+    assert head == ["JD", "O-C", "sigma", "min/max", "type", "N", "[N]", "correction", "sector", "method", "excluded", "flag"]
     eph = dict(csv.reader(open(out.with_name("out_ephemeris.csv"))))
     assert {"T0", "P", "k", "b", "fit", "shape"} <= set(eph)
     jd = np.array([e.jd for e in w.ext])

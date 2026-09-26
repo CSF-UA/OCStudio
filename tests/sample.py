@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from ocstudio.extrema import SECTOR, extrema_of, find_sectors, process_star  # noqa: E402
+from ocstudio import oc as O  # noqa: E402
 from ocstudio.oc import C, compute  # noqa: E402
 
 COLOR = {"primary_min": "#2a78d6", "secondary_min": "#eb6834", "max_I": "#1baf7a", "max_II": "#4a3aa7"}
@@ -55,7 +56,8 @@ def main(root):
         bad = sum(bool(s.error) for s in sectors)
         print(f"{name:22s} sectors {len(sectors) - bad}/{len(sectors)} extrema {len(ext):5d} "
               f"P {oc.P:.7f} (sectors {np.median(periods):.6f}) doubt {oc.doubt.sum():4d} "
-              f"clipped {oc.clipped.sum():3d} fit {oc.used.sum():4d} MAD {mad:.0f} s")
+              f"clipped {oc.clipped.sum():3d} imprecise {oc.imprecise.sum():3d} fit {oc.used.sum():4d} MAD {mad:.0f} s"
+              f"{' hidden ' + ' '.join(O.noisy_series(ext, oc)) if O.noisy_series(ext, oc) else ''}")
 
 
 if __name__ == "__main__":

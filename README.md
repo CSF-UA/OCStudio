@@ -13,14 +13,18 @@ O−C diagram of a star from its TESS sectors in one window, by the CSF AstroLab
    by least squares over the series ticked **in fit** (primary minima by default).
 4. Check the points: click one to see its window and fit; **D** excludes or returns it, **Correction ±1**
    shifts its cycle, the type and the fitting method can be changed; ←/→ go to the neighbour.
-   Hollow markers: points left out automatically (outliers, doubtful cycle) or by you; series without
-   **in fit** are drawn filled but are not fitted either. A yellow rim marks a doubtful cycle number.
+   Hollow markers: points left out automatically (outliers, doubtful cycle, imprecise timing) or by you;
+   series without **in fit** are drawn filled but are not fitted either. A yellow rim marks a doubtful cycle
+   number. The bars are ±σ, the timing error of each fit; a point whose σ is over 5× the median of its
+   series (or infinite: the extremum at the edge of its window) is imprecise.
+   A series whose O−C scatter is over 5× that of the minima and over 1% of P (spot waves, wide humps
+   rather than eclipse timings) starts hidden, with a note under **Series**; tick **show** to see it.
 5. T0 and P can be typed. **Refine** refits T0 and P and stays on — later changes are refitted too —
    until you type T0/P or press **Auto**. k and b of the control line O−C = k·(JD − T0) + b should be
    ≈ 0 (guide: P_new = P(1+k), T0_new = T0 + b).
 6. Shape of O−C: line, parabola (dP/dE = 2a) or sine + line (astrolab oc_curve, BIC).
-7. **Save CSV…** writes `<star>_oc.csv` (`JD,O-C,min/max,type,N,[N],correction,sector,method,excluded,flag`,
-   O−C in days, O−C = P(N − [N] + correction)) and `<star>_ephemeris.csv`.
+7. **Save CSV…** writes `<star>_oc.csv` (`JD,O-C,sigma,min/max,type,N,[N],correction,sector,method,excluded,flag`,
+   O−C and its error sigma in days, O−C = P(N − [N] + correction)) and `<star>_ephemeris.csv`.
 
 ```bash
 uv sync

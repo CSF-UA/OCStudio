@@ -30,7 +30,7 @@ SERIES = {
 }
 DOUBT_RIM = "#fab219"  # status "warning": doubtful cycle number
 SHAPES = {"": "none", "line": "line", "parabola": "parabola", "sine": "sine + line"}
-COLS = ["JD", "O−C, d", "min/max", "type", "N", "[N]", "correction", "sector", "method", "state"]
+COLS = ["JD", "O−C, d", "σ, d", "min/max", "type", "N", "[N]", "correction", "sector", "method", "state"]
 
 
 def button(text, slot):
@@ -153,10 +153,11 @@ class Window(QMainWindow):
 
         # middle: O-C over the point view and the table
         self.plot = Plot("JD − 2 457 000", "O − C, d")
+        self.bars = visuals.Line(connect="segments", width=1, parent=self.plot.view.scene)  # ±σ under the points
         self.points = visuals.Markers(parent=self.plot.view.scene)
         self.curve = visuals.Line(color=COLORS["text"], width=2, parent=self.plot.view.scene)
         self.ring = visuals.Markers(parent=self.plot.view.scene)
-        for v in (self.points, self.curve, self.ring):
+        for v in (self.bars, self.points, self.curve, self.ring):
             v.set_gl_state(depth_test=False)
         self.plot.clicked.connect(self._pick)
         self.lc = Plot("JD − 2 457 000", "−magnitude")
@@ -227,9 +228,13 @@ class Window(QMainWindow):
             grid.addWidget(name, r, 0)
             grid.addWidget(self.show_box[k], r, 1)
             grid.addWidget(self.fit_box[k], r, 2)
+        self.noisy_note = QLabel()
+        self.noisy_note.setWordWrap(True)
+        self.noisy_note.setStyleSheet(f"color: {COLORS['text_dim']}")
+        grid.addWidget(self.noisy_note, len(SERIES) + 1, 0, 1, 3)
         self.x_cycles = QCheckBox("X axis: cycle number E")
         self.x_cycles.toggled.connect(lambda _: self.redraw(reset=True))
-        grid.addWidget(self.x_cycles, len(SERIES) + 1, 0, 1, 3)
+        grid.addWidget(self.x_cycles, len(SERIES) + 2, 0, 1, 3)
         form = QGroupBox("O−C shape")
         lay = QVBoxLayout(form)
         self.shape_group = QButtonGroup(self)
@@ -276,6 +281,7 @@ class Window(QMainWindow):
         self.sectors, self.overrides, self.manual = X.find_sectors(self.folder), {}, None
         self.ext, self.auto, self.oc, self.sel = [], None, None, None
         self.error = "" if self.sectors else "No .tess files in the folder"
+        self.noisy_note.setText("")
         self.star.setText(f"<b>{self.folder.name}</b>: {len(self.sectors)} .tess files")
         self._fill_sectors()
         self.start()
@@ -297,7 +303,16 @@ class Window(QMainWindow):
     def _processed(self, sectors):
         self.sectors = sectors
         self._fill_sectors()
-        self.recompute(reset=True)
+        self.recompute()
+        # series far noisier than the minima (spot waves, wide humps) start hidden, so they do not bury the O-C
+        noisy = O.noisy_series(self.ext, self.oc) if self.oc else {}
+        for k, b in self.show_box.items():
+            b.blockSignals(True)
+            b.setChecked(k not in noisy)
+            b.blockSignals(False)
+        hidden = [f"{SERIES[k][0]} (O−C scatter {noisy[k]:.0f}× the minima's)" for k in SERIES if k in noisy]
+        self.noisy_note.setText(f"Hidden: {', '.join(hidden)}. Tick show to see them." if hidden else "")
+        self.redraw(reset=True)
         ok = sum(not s.error for s in sectors)
         self.status(f"Sectors processed: {ok} of {len(sectors)}")
 
@@ -353,7 +368,7 @@ class Window(QMainWindow):
     def redraw(self, reset=False):
         oc = self.oc
         self.plot.title.text = "" if oc else self.error
-        for v in (self.points, self.curve, self.ring):
+        for v in (self.bars, self.points, self.curve, self.ring):
             v.visible = oc is not None
         if oc is None:
             self.x = self.v = self.shown = np.array([])
@@ -376,6 +391,13 @@ class Window(QMainWindow):
             self.points.set_data(np.c_[self.x[m], self.v[m]], size=9, face_color=face[m], edge_color=edge[m],
                                  edge_width=np.where(oc.doubt, 2.5, 1.0)[m],
                                  symbol=np.array([SERIES[k][2] for k in oc.cls])[m])
+        sig = np.array([e.sigma for e in self.ext])
+        b = m & np.isfinite(sig)
+        self.bars.visible = bool(b.any())
+        if b.any():
+            color[:, 3] = 0.6
+            ends = np.repeat(self.v[b], 2) + np.outer(sig[b], [-1, 1]).ravel()  # v - σ, v + σ of every point
+            self.bars.set_data(np.c_[np.repeat(self.x[b], 2), ends], color=np.repeat(color[b], 2, axis=0))
         self._draw_shape(oc)
         self.t0_edit.setText(f"{oc.T0:.6f}")
         self.p_edit.setText(f"{oc.P:.8f}")
@@ -383,7 +405,8 @@ class Window(QMainWindow):
         k, b = O.control_line(jd - oc.T0, self.v, oc.used)
         self.kb.setText(f"{'Refined' if self.manual and self.manual[2] else 'Manual' if self.manual else 'Automatic'}. Control line O−C = k(JD − T0) + b:\n"
                         f"k = {k:.2e}, b = {b:.2e} d\npoints {len(jd)}: in fit {oc.used.sum()}, "
-                        f"excluded {oc.excluded.sum()}, doubtful cycle {oc.doubt.sum()}")
+                        f"excluded {oc.excluded.sum()}, doubtful cycle {oc.doubt.sum()}, "
+                        f"imprecise {oc.imprecise.sum()}")
         if reset:
             ok = m & ~oc.excluded if (m & ~oc.excluded).any() else m
             if ok.any():
@@ -479,10 +502,11 @@ class Window(QMainWindow):
         self.lc_fit.set_data(np.c_[xs, -curve(e.fit, xs)])
         self.lc_t0.set_data(np.array([[e.jd, y.min()], [e.jd, y.max()]]))
         self.lc.show_range(x, y)
-        flag = "doubtful cycle number" if oc.doubt[i] else "outlier (automatic)" if oc.clipped[i] else ""
+        flag = O.flags(oc, i)
         self.info.setText(
             f"<b>{SERIES[oc.cls[i]][0]}</b> ({e.kind}), sector {e.sector}, window {e.start}–{e.end}<br>"
-            f"JD {e.jd:.6f}, E {oc.E[i]}<br>O−C {self.v[i]:.6f} d = {self.v[i] * 1440:.2f} min<br>"
+            f"JD {e.jd:.6f}, E {oc.E[i]}<br>O−C {self.v[i]:.6f} d = {self.v[i] * 1440:.2f} ± "
+            f"{e.sigma * 1440:.2f} min<br>"
             f"method {e.method}; {'excluded' if oc.excluded[i] else 'included'}"
             + (f"<br><span style='color:{COLORS['warning']}'>⚠ {flag}</span>" if flag else ""))
         self.exclude_btn.setText("Include (D)" if oc.excluded[i] else "Exclude (D)")
@@ -533,8 +557,9 @@ class Window(QMainWindow):
         t.setRowCount(len(rs))
         for r, row in enumerate(rs):
             state = ("excluded" if row["excluded"] else "") + (f", {row['flag']}" if row["flag"] else "")
-            vals = [f"{row['JD']:.6f}", f"{row['O-C']:.6f}", row["min/max"], row["type"], f"{row['N']:.4f}",
-                    str(row["[N]"]), f"{row['correction']:g}", str(row["sector"]), row["method"], state.strip(", ")]
+            vals = [f"{row['JD']:.6f}", f"{row['O-C']:.6f}", f"{row['sigma']:.6f}", row["min/max"], row["type"],
+                    f"{row['N']:.4f}", str(row["[N]"]), f"{row['correction']:g}", str(row["sector"]), row["method"],
+                    state.strip(", ")]
             for c, v in enumerate(vals):
                 t.setItem(r, c, QTableWidgetItem(v))
         if self.sel is not None:

@@ -14,6 +14,8 @@ from scipy.stats import mannwhitneyu
 
 C = {"primary_min": 0.0, "max_I": 0.25, "secondary_min": 0.5, "max_II": 0.75}
 DOUBT = 0.1  # cycles off the expected phase of the type: the cycle number may be wrong
+IMPRECISE = 5.0  # timing error over this many times the median of its type: left out like a doubtful point
+NOISY = 5.0  # O-C scatter of a type over this many times that of the minima (and over 1% of P): hidden
 MIN_TYPES = ("primary_min", "secondary_min")
 
 
@@ -27,6 +29,7 @@ class Extremum:
     end: int = 0
     method: str = ""
     fit: object = None  # astrolab FitResult, drawn in the point view
+    sigma: float = float("nan")  # 1-sigma error of jd from the fit, days
 
     @property
     def key(self):
@@ -49,8 +52,9 @@ class OC:
     cls: np.ndarray  # type after the user's changes
     E: np.ndarray
     doubt: np.ndarray
+    imprecise: np.ndarray  # the fit's timing error is far over that of its type (or infinite)
     clipped: np.ndarray  # automatic outliers of the ephemeris fit
-    excluded: np.ndarray  # left out of the fit and the shape: user choice, else doubtful or clipped
+    excluded: np.ndarray  # left out of the fit and the shape: user choice, else doubtful, imprecise or clipped
     used: np.ndarray  # in the ephemeris fit (and its control line)
 
     def values(self, jd):
@@ -171,17 +175,30 @@ def _user(ext, overrides):
     return np.array([overrides[e.key].excluded if e.key in overrides else None for e in ext], object)
 
 
-def _fit_mask(cls, doubt, user, fit_types):
-    auto = ~doubt & np.isin(cls, list(fit_types))
+def _fit_mask(cls, left_out, user, fit_types):
+    auto = ~left_out & np.isin(cls, list(fit_types))
     return np.array([a if u is None else (not u and c in fit_types) for a, u, c in zip(auto, user, cls)], bool)
+
+
+def imprecise(ext, cls):
+    """Timing error over IMPRECISE times the median of its type, or infinite (the extremum is at the edge of
+    its window); an unknown (NaN) error is not imprecise."""
+    sig = np.array([e.sigma for e in ext], float)
+    out = np.isposinf(sig)
+    for k in set(cls):
+        m = (cls == k) & ~np.isnan(sig)
+        if m.any():
+            out |= m & (sig > IMPRECISE * np.median(sig[m]))
+    return out
 
 
 def _finish(ext, T0, P, phase, cls0, cls, E, doubt, overrides, fit_types, refit):
     jd = np.array([e.jd for e in ext])
     user = _user(ext, overrides)
-    use = _fit_mask(cls, doubt, user, fit_types)
+    imp = imprecise(ext, cls)
+    use = _fit_mask(cls, doubt | imp, user, fit_types)
     if use.sum() < 3:  # too few of the chosen types: all minima
-        use = _fit_mask(cls, doubt, user, MIN_TYPES)
+        use = _fit_mask(cls, doubt | imp, user, MIN_TYPES)
     clipped = np.zeros(len(ext), bool)
     if refit:
         if use.sum() < 3:
@@ -191,8 +208,9 @@ def _finish(ext, T0, P, phase, cls0, cls, E, doubt, overrides, fit_types, refit)
             raise ValueError("All fitted points fall in one cycle: check T0 and P")
         keep_in = np.array([u is False for u in user])
         T0, P, clipped = fit_ephemeris(jd, x, use, keep_in=keep_in)
-    excluded = np.array([(d or k) if u is None else bool(u) for d, k, u in zip(doubt, clipped, user)], bool)
-    return OC(T0, P, phase, cls0, cls, E, doubt, clipped, excluded, use & ~clipped)
+    auto = doubt | imp | clipped
+    excluded = np.array([a if u is None else bool(u) for a, u in zip(auto, user)], bool)
+    return OC(T0, P, phase, cls0, cls, E, doubt, imp, clipped, excluded, use & ~clipped)
 
 
 def _numbered(ext, T0, P, phase, cls0, overrides):
@@ -261,6 +279,28 @@ def refit(ext, oc, overrides=None, fit_types=("primary_min",)):
     return new
 
 
+def noisy_series(ext, oc):
+    """Types whose O-C scatter (MAD of the points not excluded) is over NOISY times that of the more precise
+    minima and over 1% of P: spot waves or wide humps rather than timings, hidden by default. Primary
+    minima are never noisy. Returns {type: scatter / the minima's}."""
+    v = oc.values(np.array([e.jd for e in ext]))
+    mad = {}
+    for k in C:
+        m = (oc.cls == k) & ~oc.excluded
+        if m.sum() >= 5:
+            mad[k] = 1.4826 * float(np.median(np.abs(v[m] - np.median(v[m]))))
+    ref = min((mad[k] for k in MIN_TYPES if k in mad), default=None)
+    if ref is None:
+        return {}
+    return {k: s / max(ref, 1e-12) for k, s in mad.items()
+            if k != "primary_min" and s > NOISY * ref and s > 0.01 * oc.P}
+
+
+def flags(oc, i):
+    return ", ".join(f for f, on in (("doubtful cycle", oc.doubt[i]), ("imprecise timing", oc.imprecise[i]),
+                                     ("outlier", oc.clipped[i])) if on)
+
+
 def control_line(x, oc_values, mask):
     """k, b of O-C = k (JD - T0) + b (guide: P_new = P (1 + k), T0_new = T0 + b); ~0 after the fit.
     x = JD - T0."""
@@ -289,15 +329,16 @@ def shape(epoch, oc_values, mask, model):
 
 
 def rows(ext, oc):
-    """The guide's table: JD, O-C, min/max, type, N, [N], correction, sector, method, excluded, flag."""
+    """The guide's table: JD, O-C, its error sigma (days), min/max, type, N, [N], correction, sector, method,
+    excluded, flag."""
     jd = np.array([e.jd for e in ext])
     N = (jd - oc.T0) / oc.P
     fl = np.floor(N)
     corr = fl - oc.E - corrections(oc.cls)
     ocv = oc.values(jd)
-    return [{"JD": e.jd, "O-C": ocv[i], "min/max": e.kind, "type": oc.cls[i], "N": N[i], "[N]": int(fl[i]),
+    return [{"JD": e.jd, "O-C": ocv[i], "sigma": e.sigma, "min/max": e.kind, "type": oc.cls[i], "N": N[i], "[N]": int(fl[i]),
              "correction": corr[i], "sector": e.sector, "method": e.method, "excluded": bool(oc.excluded[i]),
-             "flag": "doubtful cycle" if oc.doubt[i] else "outlier" if oc.clipped[i] else ""}
+             "flag": flags(oc, i)}
             for i, e in enumerate(ext)]
 
 
