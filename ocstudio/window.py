@@ -269,7 +269,7 @@ class Window(QMainWindow):
     def open_folder(self, path):
         if self.run:
             return self.status("Зачекайте: сектори ще обробляються")
-        self.folder = Path(path)
+        self.folder = Path(path).resolve()
         self.sectors, self.overrides, self.manual = X.find_sectors(self.folder), {}, None
         self.ext, self.auto, self.oc, self.sel = [], None, None, None
         self.error = "" if self.sectors else "У теці немає файлів .tess"
@@ -340,6 +340,7 @@ class Window(QMainWindow):
         except ValueError as e:
             if self.auto and self.manual:  # a wild T0 or P: back to the automatic ephemeris
                 self.manual = None
+                self.oc = self.auto
             self.error = "" if self.auto else str(e)
             self.status(str(e))
         keys = [e.key for e in self.ext]
@@ -376,8 +377,8 @@ class Window(QMainWindow):
         self.t0_edit.setText(f"{oc.T0:.6f}")
         self.p_edit.setText(f"{oc.P:.8f}")
         self._typed_text = (self.t0_edit.text(), self.p_edit.text())
-        k, b = O.control_line(jd, self.v, oc.used)
-        self.kb.setText(f"{'Уточнено' if self.manual and self.manual[2] else 'Вручну' if self.manual else 'Автоматично'}. Контроль O−C = kJD + b:\n"
+        k, b = O.control_line(jd - oc.T0, self.v, oc.used)
+        self.kb.setText(f"{'Уточнено' if self.manual and self.manual[2] else 'Вручну' if self.manual else 'Автоматично'}. Контроль O−C = k(JD − T0) + b:\n"
                         f"k = {k:.2e}, b = {b:.2e} д\nточок {len(jd)}: у підгонці {oc.used.sum()}, "
                         f"виключено {oc.excluded.sum()}, сумнівний цикл {oc.doubt.sum()}")
         if reset:
@@ -549,10 +550,10 @@ class Window(QMainWindow):
         path = Path(path)
         eph_path = path.with_name(path.stem.removesuffix("_oc") + "_ephemeris.csv")
         jd = np.array([e.jd for e in self.ext])
-        k, b = O.control_line(jd, self.v, self.oc.used)
+        k, b = O.control_line(jd - self.oc.T0, self.v, self.oc.used)
         model = self.shape_group.checkedButton().property("model")
         eph = {"T0": self.oc.T0, "P": self.oc.P, "k": k, "b": b, "fit": " ".join(self.fit_types()),
-               "shape": model or "none", **self.shape_params}
+               "shape": model or "none", **{f"shape {sk}": sv for sk, sv in self.shape_params.items()}}
         try:
             O.write_csv(path, eph_path, O.rows(self.ext, self.oc), eph)
         except OSError as e:

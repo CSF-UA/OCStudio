@@ -21,6 +21,7 @@ from vispy.io import write_png  # noqa: E402
 
 use_app("pyside6")
 from ocstudio.window import Window  # noqa: E402
+from ocstudio import oc as O  # noqa: E402
 
 
 def wait(app, w, limit=300):
@@ -89,6 +90,15 @@ def main():
     assert w.oc is not None
     w.reset_ephemeris()
 
+    if len(sys.argv) <= 1:  # a period aliasing this star's own P=2.7; not meaningful for an arbitrary star
+        w.overrides.clear()  # drop the no-op override left by the exclude toggle above, unrelated to this probe
+        w.t0_edit.setText("0")
+        w.p_edit.setText("0.9047619")
+        w._typed()
+        w.refine()
+        assert w.manual is None and abs(w.oc.P - w.auto.P) < 1e-12
+        w.reset_ephemeris()
+
     for b in w.shape_group.buttons():
         b.setChecked(True)
         app.processEvents()
@@ -116,6 +126,9 @@ def main():
     w.sector_table.item(0, 0).setCheckState(w.sector_table.item(0, 0).checkState().__class__.Checked)
     w.sector_table.item(1, 0).setCheckState(w.sector_table.item(1, 0).checkState().__class__.Checked)
 
+    line_btn = next(b for b in w.shape_group.buttons() if b.property("model") == "line")
+    line_btn.setChecked(True)
+    app.processEvents()
     out = Path(tmp.name, "out_oc.csv")
     QFileDialog.getSaveFileName = staticmethod(lambda *a, **k: (str(out), ""))
     w.save()
@@ -123,6 +136,9 @@ def main():
     assert head == ["JD", "O-C", "min/max", "type", "N", "[N]", "correction", "sector", "method", "excluded", "flag"]
     eph = dict(csv.reader(open(out.with_name("out_ephemeris.csv"))))
     assert {"T0", "P", "k", "b", "fit", "shape"} <= set(eph)
+    jd = np.array([e.jd for e in w.ext])
+    assert abs(float(eph["b"]) - O.control_line(jd - w.oc.T0, w.v, w.oc.used)[1]) < 1e-12
+    assert "shape a" in eph
     QFileDialog.getSaveFileName = staticmethod(lambda *a, **k: ("/nonexistent_dir/x_oc.csv", ""))
     w.save()
     assert w.statusBar().currentMessage().startswith("Не вдалося зберегти")

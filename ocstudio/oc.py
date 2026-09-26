@@ -261,11 +261,12 @@ def refit(ext, oc, overrides=None, fit_types=("primary_min",)):
     return new
 
 
-def control_line(jd, oc_values, mask):
-    """k, b of O-C = k JD + b (guide: P_new = P (1 + k), T0_new = T0 + b); ~0 after the fit."""
+def control_line(x, oc_values, mask):
+    """k, b of O-C = k (JD - T0) + b (guide: P_new = P (1 + k), T0_new = T0 + b); ~0 after the fit.
+    x = JD - T0."""
     if mask.sum() < 2:
         return float("nan"), float("nan")
-    k, b = np.polyfit(jd[mask], oc_values[mask], 1)
+    k, b = np.polyfit(x[mask], oc_values[mask], 1)
     return float(k), float(b)
 
 

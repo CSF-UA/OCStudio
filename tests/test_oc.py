@@ -177,11 +177,11 @@ def test_manual_ephemeris_and_refit():
     auto = compute(ext, [P])
     man = with_ephemeris(ext, auto, auto.T0 + 0.001, auto.P + 1e-6)
     assert same_cycles(man, cls, n) and man.T0 == auto.T0 + 0.001
-    k, b = control_line(jd, man.values(jd), man.used)
-    assert abs(b + k * jd.mean() + 0.001 + 1e-6 * np.mean(man.E)) < 2e-4
+    k, b = control_line(jd - man.T0, man.values(jd), man.used)
+    assert abs((man.T0 + b) - auto.T0) < 2e-5 and abs(man.P * (1 + k) - auto.P) < 1e-9
     back = refit(ext, man)
     assert abs(back.P - auto.P) < 1e-9 and abs(back.T0 - auto.T0) < 1e-7
-    k, b = control_line(jd, back.values(jd), back.used)
+    k, b = control_line(jd - back.T0, back.values(jd), back.used)
     assert abs(k) < 1e-12 and abs(b) < 1e-8
     # refitting with far-off ephemeris: doubt is re-read
     off = with_ephemeris(ext, auto, auto.T0, auto.P + 6e-4)
@@ -196,7 +196,7 @@ def test_wild_ephemeris():
     jd = np.array([e.jd for e in ext])
     for T0w, Pw in ((0.0, 1.234), (auto.T0, 3 * P + 0.1)):
         man = with_ephemeris(ext, auto, T0w, Pw)
-        k, b = control_line(jd, man.values(jd), man.used)  # no crash, nan when nothing is left
+        k, b = control_line(jd - man.T0, man.values(jd), man.used)  # no crash, nan when nothing is left
         try:
             refit(ext, man)
         except ValueError:

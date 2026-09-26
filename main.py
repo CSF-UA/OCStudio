@@ -12,7 +12,7 @@ def batch(folder):
     from ocstudio.extrema import extrema_of, find_sectors, process_star
     from ocstudio.oc import compute, control_line, rows, write_csv
 
-    folder = Path(folder)
+    folder = Path(folder).resolve()
     sectors = process_star(find_sectors(folder), progress=lambda i, n: print(f"\r{i}/{n} sectors", end="", flush=True))
     print()
     for s in sectors:
@@ -20,7 +20,7 @@ def batch(folder):
     ext = extrema_of(sectors)
     oc = compute(ext, [s.period for s in sectors if not s.error])
     jd = np.array([e.jd for e in ext])
-    k, b = control_line(jd, oc.values(jd), oc.used)
+    k, b = control_line(jd - oc.T0, oc.values(jd), oc.used)
     eph = {"T0": oc.T0, "P": oc.P, "k": k, "b": b, "fit": "primary_min"}
     write_csv(folder / f"{folder.name}_oc.csv", folder / f"{folder.name}_ephemeris.csv", rows(ext, oc), eph)
     print(f"T0 {oc.T0:.6f}  P {oc.P:.8f}  {len(ext)} extrema, {int(oc.excluded.sum())} excluded -> {folder.name}_oc.csv")
