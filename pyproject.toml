@@ -1,0 +1,14 @@
+[project]
+name = "ocstudio"
+version = "0.1.0"
+description = "O-C diagram of a star from its TESS sectors in one window (CSF AstroLab guide No. 5)"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "astrolab @ git+https://github.com/CSF-UA/astrolab@314b968ac249fabd9acd11731e5cd669978c9d3e",
+    "numpy>=2.4.0",
+    "pyside6>=6.10.1",
+    "scipy>=1.16.3",
+    "splitter @ git+https://github.com/CSF-UA/Splitter@4ab31c6b82ce40f9a15647e13a3668dc971b9f92",
+    "vispy>=0.16.0",
+]
