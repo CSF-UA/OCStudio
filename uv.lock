@@ -111,7 +111,7 @@ wheels = [
 [[package]]
 name = "astrolab"
 version = "0.1.0"
-source = { git = "https://github.com/CSF-UA/astrolab?rev=b3e28cd10e4bfcfd48b529abb178751848c4f11c#b3e28cd10e4bfcfd48b529abb178751848c4f11c" }
+source = { git = "https://github.com/CSF-UA/astrolab?rev=ac3b170ea150e269d3f5b821d9e0d1bde86cff01#ac3b170ea150e269d3f5b821d9e0d1bde86cff01" }
 dependencies = [
     { name = "lightkurve" },
     { name = "matplotlib" },
@@ -1093,11 +1093,11 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "astrolab", git = "https://github.com/CSF-UA/astrolab?rev=b3e28cd10e4bfcfd48b529abb178751848c4f11c" },
+    { name = "astrolab", git = "https://github.com/CSF-UA/astrolab?rev=ac3b170ea150e269d3f5b821d9e0d1bde86cff01" },
     { name = "numpy", specifier = ">=2.4.0" },
     { name = "pyside6", specifier = ">=6.10.1" },
     { name = "scipy", specifier = ">=1.16.3" },
-    { name = "splitter", git = "https://github.com/CSF-UA/Splitter?rev=4ab31c6b82ce40f9a15647e13a3668dc971b9f92" },
+    { name = "splitter", git = "https://github.com/CSF-UA/Splitter?rev=7106d1eb6f6887de3dbcf0218899747395ab88b2" },
     { name = "vispy", specifier = ">=0.16.0" },
 ]
 
@@ -1595,7 +1595,7 @@ wheels = [
 [[package]]
 name = "splitter"
 version = "5.0.0"
-source = { git = "https://github.com/CSF-UA/Splitter?rev=4ab31c6b82ce40f9a15647e13a3668dc971b9f92#4ab31c6b82ce40f9a15647e13a3668dc971b9f92" }
+source = { git = "https://github.com/CSF-UA/Splitter?rev=7106d1eb6f6887de3dbcf0218899747395ab88b2#7106d1eb6f6887de3dbcf0218899747395ab88b2" }
 dependencies = [
     { name = "numpy" },
     { name = "pyside6" },
