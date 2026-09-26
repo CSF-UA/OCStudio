@@ -128,7 +128,7 @@ class Window(QMainWindow):
         self.setStyleSheet(STYLE)
         self.resize(1500, 920)
         self.folder, self.sectors, self.ext, self.overrides = None, [], [], {}
-        self.manual = None  # (T0, P) typed or refined by the user; None: automatic
+        self.manual = None  # (T0, P, refined) typed or refined by the user; None: automatic
         self.auto = self.oc = self.sel = self.run = None
         self.error = ""  # why there is no O-C, shown over the plot
         self.x = self.v = self.shown = np.array([])
@@ -254,6 +254,12 @@ class Window(QMainWindow):
     def status(self, text):
         self.statusBar().showMessage(text)
 
+    def closeEvent(self, e):
+        if self.run:  # the worker processes cannot be interrupted; let them finish
+            self.status("Завершення обробки…")
+            self.run.wait()
+        super().closeEvent(e)
+
     # ---- folder and sectors
     def choose_folder(self):
         path = QFileDialog.getExistingDirectory(self, "Тека зорі з секторами .tess")
@@ -327,7 +333,10 @@ class Window(QMainWindow):
             self.auto = self.oc = O.compute(self.ext, [s.period for s in self.sectors if s.number in on],
                                             self.overrides, self.fit_types())
             if self.manual:
-                self.oc = O.with_ephemeris(self.ext, self.auto, *self.manual, self.overrides, self.fit_types())
+                T0, P, refined = self.manual
+                self.oc = O.with_ephemeris(self.ext, self.auto, T0, P, self.overrides, self.fit_types())
+                if refined:  # «Уточнити» stays on: every change is refitted like the button did
+                    self.oc = O.refit(self.ext, self.oc, self.overrides, self.fit_types())
         except ValueError as e:
             if self.auto and self.manual:  # a wild T0 or P: back to the automatic ephemeris
                 self.manual = None
@@ -339,7 +348,7 @@ class Window(QMainWindow):
 
     def redraw(self, reset=False):
         oc = self.oc
-        self.plot.title.text = "" if oc or self.run else self.error
+        self.plot.title.text = "" if oc else self.error
         for v in (self.points, self.curve, self.ring):
             v.visible = oc is not None
         if oc is None:
@@ -368,7 +377,7 @@ class Window(QMainWindow):
         self.p_edit.setText(f"{oc.P:.8f}")
         self._typed_text = (self.t0_edit.text(), self.p_edit.text())
         k, b = O.control_line(jd, self.v, oc.used)
-        self.kb.setText(f"{'Вручну' if self.manual else 'Автоматично'}. Контроль O−C = kJD + b:\n"
+        self.kb.setText(f"{'Уточнено' if self.manual and self.manual[2] else 'Вручну' if self.manual else 'Автоматично'}. Контроль O−C = kJD + b:\n"
                         f"k = {k:.2e}, b = {b:.2e} д\nточок {len(jd)}: у підгонці {oc.used.sum()}, "
                         f"виключено {oc.excluded.sum()}, сумнівний цикл {oc.doubt.sum()}")
         if reset:
@@ -403,18 +412,15 @@ class Window(QMainWindow):
             T0, P = (float(e.text().replace(",", ".")) for e in (self.t0_edit, self.p_edit))
         except ValueError:
             return self.status("T0 і P мають бути числами")
-        self.manual = (T0, P)
+        self.manual = (T0, P, False)
         self.recompute()
 
     def refine(self):
         if self.oc is None:
             return
-        try:
-            self.oc = O.refit(self.ext, self.oc, self.overrides, self.fit_types())
-        except ValueError as e:
-            return self.status(str(e))
-        self.manual = (self.oc.T0, self.oc.P)
-        self.redraw()
+        T0, P = self.oc.T0, self.oc.P
+        self.manual = (T0, P, True)
+        self.recompute()
 
     def reset_ephemeris(self):
         self.manual = None
@@ -547,5 +553,8 @@ class Window(QMainWindow):
         model = self.shape_group.checkedButton().property("model")
         eph = {"T0": self.oc.T0, "P": self.oc.P, "k": k, "b": b, "fit": " ".join(self.fit_types()),
                "shape": model or "none", **self.shape_params}
-        O.write_csv(path, eph_path, O.rows(self.ext, self.oc), eph)
+        try:
+            O.write_csv(path, eph_path, O.rows(self.ext, self.oc), eph)
+        except OSError as e:
+            return self.status(f"Не вдалося зберегти: {e}")
         self.status(f"Збережено {path.name} і {eph_path.name}")

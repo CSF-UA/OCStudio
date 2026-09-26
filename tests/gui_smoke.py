@@ -73,6 +73,10 @@ def main():
 
     w.refine()
     assert w.manual is not None
+    c = w.oc.clipped.sum(); u = w.oc.used.sum(); T0r, Pr = w.oc.T0, w.oc.P
+    w.toggle_exclude()
+    w.toggle_exclude()
+    assert w.oc.clipped.sum() == c and w.oc.used.sum() == u and abs(w.oc.P - Pr) < 1e-12 and abs(w.oc.T0 - T0r) < 1e-9 and w.manual[2] is True
     T0, P = w.oc.T0, w.oc.P
     w.t0_edit.setText(f"{T0 + 0.01:.6f}")
     w._typed()
@@ -119,12 +123,27 @@ def main():
     assert head == ["JD", "O-C", "min/max", "type", "N", "[N]", "correction", "sector", "method", "excluded", "flag"]
     eph = dict(csv.reader(open(out.with_name("out_ephemeris.csv"))))
     assert {"T0", "P", "k", "b", "fit", "shape"} <= set(eph)
+    QFileDialog.getSaveFileName = staticmethod(lambda *a, **k: ("/nonexistent_dir/x_oc.csv", ""))
+    w.save()
+    assert w.statusBar().currentMessage().startswith("Не вдалося зберегти")
+    QFileDialog.getSaveFileName = staticmethod(lambda *a, **k: (str(out), ""))
     w.grab().save(str(OUT / "gui_window.png"))
     print("GUI smoke ok:", len(w.ext), "extrema,", w.statusBar().currentMessage())
     empty = Path(tmp.name, "empty")
     empty.mkdir()
     w.open_folder(empty)
     assert w.oc is None and w.plot.title.text == "У теці немає файлів .tess" and w.sector_table.rowCount() == 0
+
+    junk = Path(tmp.name, "junk")
+    junk.mkdir()
+    (junk / "x-s0001-.tess").write_text("1 2\n3 4\n")
+    w.open_folder(junk)
+    wait(app, w)
+    assert w.oc is None and w.plot.title.text.startswith("Менше 3")
+
+    w.open_folder(folder)
+    w.close()
+    assert w.run is None or w.run.isFinished()
 
 
 if __name__ == "__main__":
