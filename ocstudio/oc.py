@@ -148,17 +148,20 @@ def assign(jd, kind, depth, sector, P):
     return float(T0), float(P), phase, cls, E, doubt
 
 
-def fit_ephemeris(jd, x, use, clip=6.0):
-    """Least squares JD = T0 + P x (x = E + correction) over `use`, dropping points > clip MAD off.
-    T0, P, clipped."""
+def fit_ephemeris(jd, x, use, clip=6.0, keep_in=None):
+    """Least squares JD = T0 + P x (x = E + correction) over `use`, dropping points > clip MAD off;
+    keep_in are never dropped."""
     keep = use.copy()
+    force = keep_in if keep_in is not None else np.zeros(len(jd), bool)
     for _ in range(10):
         P, T0 = np.polyfit(x[keep], jd[keep], 1)
         r = jd - (T0 + P * x)
         med = np.median(r[keep])
         mad = 1.4826 * np.median(np.abs(r[keep] - med))  # half the std: a tight core of few points keeps its wings
-        new = use & (np.abs(r - med) <= clip * max(mad, 0.5 * np.std(r[keep]), 1e-9))
-        if (new == keep).all() or new.sum() < 3:
+        new = use & (force | (np.abs(r - med) <= clip * max(mad, 0.5 * np.std(r[keep]), 1e-9)))
+        if (new == keep).all() or (new.sum() < 3 and not force.any()):
+            break
+        if np.ptp(x[new]) == 0:
             break
         keep = new
     return float(T0), float(P), use & ~keep
@@ -183,7 +186,11 @@ def _finish(ext, T0, P, phase, cls0, cls, E, doubt, overrides, fit_types, refit)
     if refit:
         if use.sum() < 3:
             raise ValueError("Менше 3 екстремумів для ефемериди")
-        T0, P, clipped = fit_ephemeris(jd, E + corrections(cls), use)
+        x = E + corrections(cls)
+        if np.ptp(x[use]) == 0:
+            raise ValueError("Усі точки підгонки в одному циклі: перевірте T0 і P")
+        keep_in = np.array([u is False for u in user])
+        T0, P, clipped = fit_ephemeris(jd, x, use, keep_in=keep_in)
     excluded = np.array([(d or k) if u is None else bool(u) for d, k, u in zip(doubt, clipped, user)], bool)
     return OC(T0, P, phase, cls0, cls, E, doubt, clipped, excluded, use & ~clipped)
 
@@ -194,6 +201,8 @@ def _numbered(ext, T0, P, phase, cls0, overrides):
     cls = np.array([overrides[e.key].cls if e.key in overrides and overrides[e.key].cls else c
                     for e, c in zip(ext, cls0)], object)
     u = (jd - T0) / P - np.array([phase[k] for k in cls])
+    if not np.all(np.abs(u) < 1e9):
+        raise ValueError("T0 чи P хибні: номери циклів завеликі")
     E = np.round(u).astype(int)
     doubt = np.abs(u - E) > DOUBT
     E += np.array([overrides[e.key].shift if e.key in overrides else 0 for e in ext], int)
@@ -205,7 +214,7 @@ def compute(ext, periods, overrides=None, fit_types=("primary_min",)):
     overrides = overrides or {}
     if sum(e.kind == "min" for e in ext) < 3:
         raise ValueError("Менше 3 мінімумів: O−C не побудувати")
-    good = [p for p in periods if p > 0]
+    good = [p for p in periods if p is not None and np.isfinite(p) and p > 0]
     if not good:
         raise ValueError("Немає періоду в жодному секторі")
     jd = np.array([e.jd for e in ext])
@@ -224,17 +233,32 @@ def compute(ext, periods, overrides=None, fit_types=("primary_min",)):
 
 def with_ephemeris(ext, oc, T0, P, overrides=None, fit_types=("primary_min",)):
     """T0 and P typed by the user: cycle numbers by rounding, as in the guide's spreadsheet."""
+    try:
+        T0, P = float(T0), float(P)
+    except (TypeError, ValueError):
+        raise ValueError("T0 і P мають бути числами") from None
     if not (np.isfinite(T0) and np.isfinite(P) and P > 0):
-        raise ValueError("P має бути додатним числом")
+        raise ValueError("T0 і P мають бути скінченними, P > 0")
     overrides = overrides or {}
     cls, E, doubt = _numbered(ext, T0, P, oc.phase, oc.cls0, overrides)
     return _finish(ext, T0, P, oc.phase, oc.cls0, cls, E, doubt, overrides, fit_types, refit=False)
 
 
 def refit(ext, oc, overrides=None, fit_types=("primary_min",)):
-    """'Уточнити': least squares with the current cycle numbers and types."""
-    return _finish(ext, oc.T0, oc.P, oc.phase, oc.cls0, oc.cls, oc.E, oc.doubt, overrides or {}, fit_types,
-                   refit=True)
+    """'Уточнити': least squares with the current cycle numbers and types; the doubtful cycle numbers are
+    re-read against the refined T0 and P."""
+    overrides = overrides or {}
+    jd = np.array([e.jd for e in ext])
+    base = oc.E - np.array([overrides[e.key].shift if e.key in overrides else 0 for e in ext], int)
+    ph = np.array([oc.phase[k] for k in oc.cls])
+    doubt = oc.doubt
+    for _ in range(3):
+        new = _finish(ext, oc.T0, oc.P, oc.phase, oc.cls0, oc.cls, oc.E, doubt, overrides, fit_types, refit=True)
+        d = np.abs((jd - new.T0) / new.P - ph - base) > DOUBT
+        if (d == doubt).all():
+            break
+        doubt = d
+    return new
 
 
 def control_line(jd, oc_values, mask):

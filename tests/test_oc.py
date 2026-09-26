@@ -129,6 +129,10 @@ def test_outliers_clipped():
     oc = compute(ext, [P])
     assert oc.clipped[bad].all() and oc.excluded[bad].all() and oc.clipped.sum() == 3
     assert abs(oc.P - P) < 1e-6
+    # returning an outlier: it stays in the fit
+    oc2 = compute(ext, [P], {ext[bad[0]].key: Override(excluded=False)})
+    assert oc2.used[bad[0]] and not oc2.clipped[bad[0]] and not oc2.excluded[bad[0]] and rows(ext, oc2)[bad[0]]["flag"] == ""
+    assert oc2.clipped[bad[1:3]].all()  # the other two stay clipped
 
 
 def test_doubtful_cycle():
@@ -179,6 +183,11 @@ def test_manual_ephemeris_and_refit():
     assert abs(back.P - auto.P) < 1e-9 and abs(back.T0 - auto.T0) < 1e-7
     k, b = control_line(jd, back.values(jd), back.used)
     assert abs(k) < 1e-12 and abs(b) < 1e-8
+    # refitting with far-off ephemeris: doubt is re-read
+    off = with_ephemeris(ext, auto, auto.T0, auto.P + 6e-4)
+    assert off.doubt.any() and same_cycles(off, cls, n)
+    back2 = refit(ext, off)
+    assert not back2.doubt.any() and not back2.excluded.any() and abs(back2.P - auto.P) < 1e-8
 
 
 def test_wild_ephemeris():
@@ -198,6 +207,18 @@ def test_wild_ephemeris():
             raise AssertionError(Pw)
         except ValueError:
             pass
+    # wild T0/P inputs must raise ValueError with Cyrillic message
+    for T0w, Pw in (("abc", P), (None, P), (auto.T0, 1e9), (auto.T0, 1e5), (1e20, P), (auto.T0, 1e-300)):
+        try:
+            man = with_ephemeris(ext, auto, T0w, Pw)
+            try:
+                refit(ext, man)
+            except ValueError as e:
+                assert any(ord(c) > 127 for c in str(e)), f"no Cyrillic in: {e}"
+        except ValueError as e:
+            assert any(ord(c) > 127 for c in str(e)), f"no Cyrillic in: {e}"
+    # far-off period with inf and None in compute
+    assert abs(compute(ext, [float("inf"), P, None]).P - P) < 1e-6
 
 
 def test_too_few_minima():
